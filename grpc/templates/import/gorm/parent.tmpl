@@ -1,0 +1,38 @@
+{{ $table := . }}
+{{- $hasParent := false}}
+
+{{- range $f := .Fields}}
+    {{- if or $f.RelBelongsTo $f.RelManyToMany }}
+        {{- $hasParent = true}}
+    {{- end}}
+{{- end}}
+
+{{- if $hasParent }}
+    func apply{{ $table.Name | pascal }}Parent(db *gorm.DB, parent string, parentName string) (*gorm.DB, error) {
+        if parent == "" || parentName == "" {
+            return db, nil
+        }
+
+        switch parent {
+        {{- range $f := .Fields}}
+            {{- if $f.RelBelongsTo }}
+                case "{{ $f.Name | camel | plural }}":
+                    return db.Where("{{ $f.Rel.RefTable.ID.Name }} = ?", parentName), nil
+            {{- end}}
+            {{- if $f.RelManyToMany }}
+                case "{{ $f.Name | camel | plural }}":
+                ids := make([]string, 0)
+                joinDB := db.Session(&gorm.Session{})
+                err := joinDB.Select("{{ $f.Rel.JoinTable.JoinField.Name }}").Table("{{ $f.Rel.JoinTable.Name }}").Where("{{ $f.Rel.JoinTable.JoinRefField.Name }} = ?", parentName).Find(&ids).Error
+                if err != nil {
+                    return nil, err
+                }
+                return db.Where("{{ $table.ID.Name | camel }} IN (?)", ids), nil
+            {{- end}}
+        {{- end}}
+        default:
+            return nil, status.Errorf(codes.InvalidArgument, "Unsupported parent resource name: %s", parent)
+        }
+
+    }
+{{- end}}

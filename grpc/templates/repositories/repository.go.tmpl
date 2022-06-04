@@ -1,0 +1,46 @@
+package repositories
+
+import (
+	"context"
+	"errors"
+
+	"{{ .Package }}/models"
+)
+
+var (
+	ErrDialect = errors.New("dialect not supported")
+)
+
+type Repository interface {
+{{- range $table := .Tables}}
+	List{{ $table.Name | pascal | plural }}(ctx context.Context, parent string, parentName string, filter *models.{{ $table.Name | pascal }}FilterInput, orderBy string, count int32, token string, withEdges bool) (accounts []*models.{{ $table.Name | pascal}}, nextToken string, totalCount int64, err error)
+
+	Create{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel }} *models.{{ $table.Name | pascal }}) (*models.{{ $table.Name | pascal }}, error)
+
+	BatchCreate{{ $table.Name | pascal }}(ctx context.Context, {{ .Name | camel | plural }} []*models.{{ $table.Name | pascal }}) ([]*models.{{ $table.Name | pascal }}, error)
+	
+    {{- range $f := .Fields}}
+		{{- if not $f.Remote }}
+			{{- if $f.Filterable }}
+				Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx context.Context, {{ $f.Name | camel }} {{ $f.Type.Kind }}, withEdges bool) (*models.{{ $table.Name | pascal }}, error)
+
+				BatchGet{{ $table.Name | pascal }}By{{ $f.Name| pascal }}(ctx context.Context, {{ $f.Name | camel | plural }} []{{ $f.Type.Kind }}, withEdges bool) ([]*models.{{ $table.Name | pascal }}, error)
+
+			{{- end}}
+		{{- end}}
+		{{- if $f.RelManyToMany }}
+			{{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }} )  error
+
+			{{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind}} )  error 
+		{{- end}}
+	{{- end}}
+
+	Update{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel }} *models.{{ $table.Name | pascal }}, updateMask []string) (*models.{{ $table.Name | pascal }}, error)
+
+	BatchUpdate{{ $table.Name | pascal }}(ctx context.Context, {{ .Name | camel | plural }} []*models.{{ $table.Name | pascal }}, updateMask []string) ([]*models.{{ $table.Name | pascal }}, error)
+
+	Delete{{ $table.Name | pascal }}(ctx context.Context, {{ $table.ID.Name | camel }} {{ $table.ID.Type.Kind }}) error
+
+	BatchDelete{{ $table.Name | pascal }}(ctx context.Context, {{ $table.ID.Name | camel | plural }} []{{ $table.ID.Type.Kind }}) error
+{{- end}}
+}

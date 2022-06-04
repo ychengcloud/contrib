@@ -1,0 +1,72 @@
+{{ $table := . }}
+{{- $hasParent := false}}
+
+{{- range $f := $table.Fields}}
+    {{- if or $f.RelBelongsTo $f.RelManyToMany }}
+        {{- $hasParent = true}}
+    {{- end}}
+{{- end}}
+
+func (r *repository) List{{ $table.Name | pascal | plural }}(ctx context.Context, parent string, parentName string, filter *models.{{ $table.Name | pascal }}FilterInput, orderBy string, count int32, token string, withEdges bool) ({{ $table.Name | camel | plural }} []*models.{{ $table.Name | pascal }}, nextToken string, totalCount int64, err error) {
+	db := r.db.Session(&gorm.Session{})
+
+    exprs := make([]clause.Expression, 0)
+
+    {{- if $hasParent }}
+        db, err = apply{{ $table.Name | pascal }}Parent(db, parent, parentName)
+        if err != nil {
+            return
+        }
+    {{- end}}
+
+    limit := int(count)
+    if limit == 0 {
+        limit = MaxLimit
+    }
+    if token == "" {
+        token = "0"
+    }
+
+    offset, err := strconv.Atoi(token)
+    if err != nil {
+        return
+    }
+
+    {{ $table.Name | camel | plural }} = make([]*models.{{ $table.Name | pascal }}, 0)
+
+    if withEdges {
+		db = db.Preload(clause.Associations)
+	}
+
+    if strings.TrimSpace(orderBy) != "" {
+        db = db.Order(orderBy)
+    }
+
+    db = db.Limit(limit + 1)
+    db = db.Offset(offset)
+
+    filterExpression, err := apply{{ $table.Name | pascal }}Filter(filter)
+    if err != nil {
+        return
+    }
+    if filterExpression != nil {
+        exprs = append(exprs, filterExpression)
+    }
+    if len(exprs) > 0 {
+        where := clause.Where{Exprs: exprs}
+        db = db.Clauses(where)
+    }
+
+    err = db.Model(&models.{{ $table.Name | pascal }}{}).Count(&totalCount).Error
+    if err != nil {
+        return
+    }
+
+    err = db.Find(&{{$table.Name | camel | plural }}).Error
+
+    if err != nil {
+        return
+    }
+
+    return
+}

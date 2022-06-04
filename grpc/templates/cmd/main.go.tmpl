@@ -1,0 +1,50 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"strings"
+
+	"{{ .Package }}/config"
+	"{{ .Package }}/database"
+	repogorm "{{ .Package }}/repositories/gorm"
+	"{{ .Package }}/server"
+	"{{ .Package }}/services"
+
+)
+
+var configFile = flag.String("c", "config", "set config file")
+
+func main() {
+	flag.Parse()
+
+	cfg, err := config.New(*configFile, strings.ToUpper("{{ .Project | singular }}_"))
+	if err != nil {
+		log.Fatalln("Failed to listen:", err)
+
+	}
+
+	logger, err := NewLogger(&cfg.LoggerConfig)
+	if err != nil {
+		log.Fatalln("Failed to listen:", err)
+
+	}
+
+	db, err := database.NewGorm(context.Background(),
+		database.WithMysqlHost(cfg.DatabaseConfig.MysqlOptions.Host),
+		database.WithMysqlName(cfg.DatabaseConfig.MysqlOptions.Name),
+		database.WithMysqlUser(cfg.DatabaseConfig.MysqlOptions.User),
+		database.WithMysqlPassword(cfg.DatabaseConfig.MysqlOptions.Password),
+	)
+	if err != nil {
+		log.Fatalf("failed create database: %s", err)
+	}
+
+	repo := repogorm.New{{ .Project | pascal }}Repository(db)
+	{{ .Project | camel }}Service := services.New{{ .Project | pascal }}Service(repo)
+
+	s := server.NewServer(logger, cfg, {{ .Project | camel }}Service)
+
+	logger.Sugar().Fatal(s.Run())
+}

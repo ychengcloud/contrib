@@ -1,0 +1,63 @@
+{{ $table := . }}
+
+func (r *repository) Create{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel }} *models.{{ $table.Name | pascal }}) (*models.{{ $table.Name | pascal }}, error) {
+    if {{ $table.Name | camel }} == nil {
+        return nil, status.Errorf(codes.InvalidArgument, "invalid argument: {{ $table.Name | camel }} is not provided")
+    }
+
+    var err error
+    tx := r.db.Begin()
+    defer func() {
+        if err != nil {
+            tx.Rollback()
+        }
+    }()
+
+    if err = tx.Create({{ $table.Name | camel }}).Error; err != nil {
+        return nil, err
+    }
+
+    switch {
+    case err == nil:
+        tx.Commit()
+        return {{ $table.Name | camel }}, nil
+    case database.IsUniqueConstraintError(err):
+        return nil, status.Errorf(codes.AlreadyExists, "already exists: %s", err)
+    case errors.Is(err, gorm.ErrInvalidField):
+        return nil, status.Errorf(codes.InvalidArgument, "invalid argument: %s", err)
+    default:
+        return nil, status.Errorf(codes.Internal, "internal: %s", err)
+    }
+}
+
+func (r *repository) BatchCreate{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel | plural }} []*models.{{ $table.Name | pascal }}) ([]*models.{{ $table.Name | pascal }}, error) {
+    for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+        if {{ $table.Name | camel }} == nil {
+            return nil, status.Errorf(codes.InvalidArgument, "invalid argument: {{ $table.Name | camel }} is not provided")
+        }
+    }
+
+    var err error
+    tx := r.db.Begin()
+    defer func() {
+        if err != nil {
+            tx.Rollback()
+        }
+    }()
+
+    if err = tx.Create({{ $table.Name | camel | plural }}).Error; err != nil {
+        return nil, err
+    }
+
+    switch {
+    case err == nil:
+        tx.Commit()
+        return {{ $table.Name | camel | plural }}, nil
+    case database.IsUniqueConstraintError(err):
+        return nil, status.Errorf(codes.AlreadyExists, "already exists: %s", err)
+    case errors.Is(err, gorm.ErrInvalidField):
+        return nil, status.Errorf(codes.InvalidArgument, "invalid argument: %s", err)
+    default:
+        return nil, status.Errorf(codes.Internal, "internal: %s", err)
+    }
+}

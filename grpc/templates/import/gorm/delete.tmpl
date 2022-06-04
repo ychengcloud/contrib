@@ -1,0 +1,32 @@
+{{ $table := . }}
+func (r *repository) delete{{ $table.Name | pascal }}(ctx context.Context, {{ $table.ID.Name | camel }} interface{}) error {
+	db := r.db
+	var err error
+
+	tx := db.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err = tx.Model(&models.{{ $table.Name | pascal }}{}).Where("`{{ $table.ID.Name }}` IN (?)", {{ $table.ID.Name | camel }}).Delete(nil).Error
+
+	switch {
+	case err == nil:
+		tx.Commit()
+		return nil
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return status.Errorf(codes.NotFound, "not found: %s", err)
+	default:
+		return status.Errorf(codes.Internal, "internal error: %s", err)
+	}
+}
+
+func (r *repository) Delete{{ $table.Name | pascal }}(ctx context.Context, {{ $table.ID.Name | camel }} {{ $table.ID.Type.Kind }}) error {
+	return r.delete{{ $table.Name | pascal }}(ctx, {{ $table.ID.Name | camel }})
+}
+
+func (r *repository) BatchDelete{{ $table.Name | pascal }}(ctx context.Context, {{ $table.ID.Name | pascal | plural }} []{{ $table.ID.Type.Kind }}) error {
+	return r.delete{{ $table.Name | pascal }}(ctx, {{ $table.ID.Name | pascal | plural }})
+}

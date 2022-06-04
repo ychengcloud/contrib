@@ -1,0 +1,128 @@
+{{ $importPkg := .ImportPkg }}
+{{ $g := .Generator }}
+{{- $table := .}}
+
+package models
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+
+	pb "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1"
+)
+
+type {{ $table.Name | pascal }} struct {
+	{{ $g.Template "import/fields.tmpl" .Fields }}
+}
+
+//TableName
+func ({{ receiver  $importPkg .Name }} *{{ $table.Name | pascal }}) TableName() string {
+	return "{{ .Name }}"
+}
+
+func ({{ receiver  $importPkg .Name }} *{{ pascal .Name }}) Valid() error {
+	return validate.Struct({{ receiver  $importPkg .Name }})
+}
+
+type {{ $table.Name | pascal }}FilterInput struct {
+	NOT	*{{ $table.Name | pascal }}FilterInput `json:"NOT"`
+	AND []*{{ $table.Name | pascal }}FilterInput `json:"AND"`
+	OR	[]*{{ $table.Name | pascal }}FilterInput `json:"OR"`
+	{{- range $index, $f := .Fields}}
+		{{- if .Filterable }}
+			{{ $f.Name | pascal }} *{{ $table.Name | pascal }}Op{{ $f.Name | pascal }}Input `json:"{{ $f.Name | camel }}"`
+		{{- end}}
+	{{- end}}
+}
+
+{{- range $f := .Fields}}
+	{{- if .Filterable }}
+		type {{ $table.Name | pascal }}Op{{ $f.Name | pascal }}Input struct {
+			{{- range $index, $op := $f.Ops }}
+				{{- $t := (printf "*%s" $f.Type.Kind) }}
+				{{- if eq $op.Name "In" "NotIn" }}
+					{{- $t = (printf "[]%s" $t) }}
+				{{- end }}
+				{{ $op.Name }} {{ $t }} `json:"{{$op.Name}}"`
+			{{- end}}
+		}
+	{{- end}}
+{{- end}}
+
+func {{ $table.Name | pascal }}ToDB({{ $table.Name | camel }} *pb.{{ $table.Name | pascal }}) *{{ $table.Name | pascal }} {
+	m := &{{  $table.Name | pascal  }}{}
+	{{- range $f := .Fields}}
+		{{- if  $f.RelNone}}
+			{{- $value := ( printf "%s.%s" ($table.Name | camel) ($f.Name | pascal) ) }}
+			{{- if eq $f.Type.Kind "time.Time"}}
+				{{- $value = ( printf "%s.AsTime()" $value ) }}
+			{{- end }}
+			{{- /*protobuf 和 go int8 int16 转化匹配*/}}
+			{{- if eq $f.Type.ProtobufKind "int32" "uint32" -}}
+				{{- if not ( eq $f.Type.Kind $f.Type.ProtobufKind )}}
+					{{- $value = ( printf "%s(%s)" $f.Type.Kind $value ) }}
+				{{- end }}
+			{{- end }}
+			m.{{ $f.Name | pascal }} = {{ $value }}
+		{{- end }}
+
+		{{- if not .Remote }}
+			{{- if or $f.RelBelongsTo $f.RelHasOne }}
+				if {{ $table.Name | camel }}.{{ $f.Name | pascal }} != nil {
+					m.{{ $f.Name | pascal }} = {{  $f.Rel.RefTable.Name | pascal }}ToDB({{ $table.Name | camel }}.{{ $f.Name | pascal }})
+				}
+			{{- end }}
+
+			{{- if or $f.RelHasMany $f.RelManyToMany }}
+				m.{{ $f.Name | pascal | plural }} = make([]*{{ $f.Rel.RefTable.Name | pascal }}, len({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}))
+				for index, pb{{ $f.Name | pascal }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
+					m.{{ $f.Name | pascal | plural }}[index] = {{  $f.Rel.RefTable.Name | pascal }}ToDB(pb{{ $f.Name | pascal }})
+				}
+			{{- end }}
+		{{- end }}
+	{{- end }}
+	
+	return m
+}
+
+func (m *{{ $table.Name | pascal }}) ToPB() *pb.{{ $table.Name | pascal }} {
+	pb{{ $table.Name | pascal }} := &pb.{{ $table.Name | pascal }}{
+		{{- range $f := .Fields}}
+			{{- if  $f.RelNone}}
+				{{- $value := (printf "m.%s"  ( $f.Name | pascal ) ) }}
+				{{- if eq $f.Type.Kind "time.Time"}}
+					{{- $value = ( printf "timestamppb.New(%s)" $value ) }}
+				{{- end }}
+				{{- /*protobuf 和 go int8 int16 转化匹配*/}}
+				{{- if eq $f.Type.ProtobufKind "int32" "uint32" -}}
+					{{- if not ( eq $f.Type.Kind $f.Type.ProtobufKind )}}
+						{{- $value = ( printf "%s(%s)" $f.Type.ProtobufKind $value ) }}
+					{{- end }}
+				{{- end }}
+				{{ $f.Name | pascal }}:     {{ $value }},
+			{{- end}}
+		{{- end}}
+	}
+
+	{{- range $f := .Fields}}
+		{{- if not .Remote }}
+			{{- if or $f.RelBelongsTo $f.RelHasOne }}
+				if m.{{ $f.Name | pascal }} != nil {
+					pb{{ $table.Name | pascal }}.{{ $f.Name | pascal }} = m.{{ $f.Name | pascal }}.ToPB()
+				}
+			{{- end}}
+			{{- if or $f.RelHasMany $f.RelManyToMany }}
+				pb{{ $table.Name | pascal }}.{{ $f.Name | pascal | plural }} = make([]*pb.{{ $f.Rel.RefTable.Name | pascal }} , 0, len(m.{{ $f.Name | pascal | plural }}))
+				for _, {{ $f.Name | camel }} := range m.{{ $f.Name | pascal | plural }} {
+					pb{{ $table.Name | pascal }}.{{ $f.Name | pascal | plural }} = append(pb{{ $table.Name | pascal }}.{{ $f.Name | pascal | plural }}, {{ $f.Name | camel }}.ToPB())
+				}
+			{{- end}}
+		{{- end}}
+	{{- end}}
+	return pb{{ $table.Name | pascal }}
+}

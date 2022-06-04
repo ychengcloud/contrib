@@ -1,0 +1,52 @@
+{{ range . }}
+    {{- if not .Remote }}
+		{{- $name := (.Name | pascal) }}
+		{{- $type := ""}}
+		{{- $tags := (printf "json:\"%s\" gorm:\"%s" (.Name | camel) (.Name | camel))}}
+
+		{{- if .RelNone}}
+			{{- $type = .Type.Kind }}
+			{{- if eq $name "CreatedAt" }}
+				{{- $tags = (printf "%s;autoCreateTime:false" $tags)}}
+			{{- end }}
+			{{- if eq $name "UpdatedAt" }}
+				{{- $tags = (printf "%s;autoUpdateTime:false" $tags)}}
+			{{- end }}
+		{{- end }}
+			
+		{{- if or .RelBelongsTo .RelHasOne }}
+			{{- $name = .Name | pascal }}
+			{{- $type = (printf "%s%s" "*" ( .Rel.RefTable.Name | pascal ) )}}
+		{{- end}}
+
+		{{- if or .RelHasMany .RelManyToMany }}
+			{{- $name = .Name | pascal | plural }}
+			{{- $type = (printf "%s%s" "[]*" ( .Rel.RefTable.Name | pascal ) )}}
+			{{- $tags = (printf "json:\"%s\" gorm:\"%s" (.Name | camel | plural) (.Name | camel | plural))}}
+		{{- end}}
+
+		{{- if .PrimaryKey }}
+			{{- $tags = (printf "%s;primaryKey" $tags)}}
+		{{- end}}
+		{{- if .AutoIncrement }}
+			{{- $tags = (printf "%s;autoIncrement" $tags)}}
+		{{- end}}
+
+		{{- if or .RelBelongsTo .RelManyToMany }}
+			{{- $tags = (printf "%s;foreignKey:%s;references:%s" $tags ( .Rel.Field.Name | pascal ) ( .Rel.RefField.Name | pascal ) )}}
+		{{- end}}
+
+		{{- if or .RelHasOne .RelHasMany }}
+			{{- $tags = (printf "%s;foreignKey:%s;references:%s" $tags ( .Rel.RefField.Name | pascal ) ( .Rel.Field.Name | pascal ) )}}
+		{{- end}}
+
+		{{- if .RelManyToMany }}
+			{{- $tags = (printf "%s;many2many:%s;joinForeignKey:%s;joinReferences:%s" $tags (.Rel.JoinTable.JoinField.Name | pascal) (.Rel.JoinTable.JoinField.Name | pascal) (.Rel.JoinTable.JoinRefField.Name | pascal)) }}
+		{{- end}}
+		{{- if not .RelNone }}
+			{{- $tags = (printf "%s\" faker:\"-" $tags)}}
+		{{- end }}
+		{{- $tags = (printf "%s\"" $tags)}}
+		{{- $name}} {{$type}} `{{$tags}}`
+	{{- end}}
+{{ end}}

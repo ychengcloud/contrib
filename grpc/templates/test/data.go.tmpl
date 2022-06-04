@@ -1,0 +1,33 @@
+package test
+
+import (
+	"github.com/bxcodec/faker/v3"
+	"{{ .Package }}/models"
+)
+
+const (
+	MockDataCount = 2
+)
+
+var (
+{{- range .Tables}}
+	Test{{ .Name | pascal | plural }}        = []*models.{{ .Name | pascal }}{}
+{{- end}}
+)
+
+func init() {
+	{{- range $table := .Tables}}
+		for i := 0; i < MockDataCount; i++ {
+			test{{ $table.Name | pascal }} := &models.{{ $table.Name | pascal }}{}
+			{{- range $field := .Fields}}
+				{{- if $field.RelNone }}
+					{{- if not (eq (.Name | pascal)  "CreatedAt" "UpdatedAt" ) }}
+						faker.FakeData(&test{{ $table.Name | pascal }}.{{$field.Name | pascal }})
+					{{- end}}
+				{{- end}}
+			{{- end}}
+			Test{{ $table.Name | pascal | plural }} = append(Test{{ $table.Name | pascal | plural }}, test{{ $table.Name | pascal }})
+		}
+	{{- end}}
+
+}

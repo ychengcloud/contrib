@@ -1,0 +1,36 @@
+package services
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+
+	mockrepo "{{ .Package }}/repositories/mock"
+)
+
+var repo *mockrepo.MockRepository
+var err error
+var svc *{{ .Project | title }}Service
+
+func TestMain(m *testing.M) {
+	os.Exit(testMainWrapper(m))
+}
+
+func testMainWrapper(m *testing.M) int {
+	return m.Run()
+}
+
+func newTest{{ .Project | title }}Service(t *testing.T, ctx context.Context) *{{ .Project | title }}Service {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo = mockrepo.NewMockRepository(ctrl)
+
+	svc := New{{ .Project | title }}Service(repo)
+	assert.NotNil(t, svc)
+
+	return svc
+}

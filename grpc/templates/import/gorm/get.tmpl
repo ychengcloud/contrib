@@ -1,0 +1,50 @@
+
+{{ $table := . }}
+
+func (r *repository) get{{ $table.Name | pascal | plural }}(ctx context.Context, field string, value interface{}, withEdges bool) ([]*models.{{ $table.Name | pascal }}, error) {
+    if field == "" || value == nil {
+        return nil, status.Errorf(codes.InvalidArgument, "invalid argument: id is not provided")
+    }
+
+    var (
+        err   error
+    )
+    {{ $table.Name | camel | plural }} := make([]*models.{{ $table.Name | pascal }}, 0)
+
+    db := r.db.Session(&gorm.Session{})
+
+    if withEdges {
+        db = db.Preload(clause.Associations)
+    }
+
+    err = db.Model(&models.{{ $table.Name | pascal }}{}).Where(fmt.Sprintf("`%s` IN (?)", field), value).Find(&{{ $table.Name | camel | plural }}).Error
+
+    switch {
+    case err == nil:
+        return {{ $table.Name | camel | plural }}, nil
+    case errors.Is(err, gorm.ErrRecordNotFound):
+        return nil, status.Errorf(codes.NotFound, "not found: %s", err)
+    default:
+        return nil, status.Errorf(codes.Internal, "internal error: %s", err)
+    }
+}
+
+{{- range $f := .Fields}}
+	{{- if not $f.Remote }}
+		{{- if $f.Filterable }}
+            func (r *repository) Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx context.Context, {{ $f.Name | camel }} {{ $f.Type.Kind }}, withEdges bool) (*models.{{ $table.Name | pascal }}, error) {
+                {{ $table.Name | camel | plural }}, err := r.get{{ $table.Name | pascal | plural }}(ctx, "{{ $f.Name | snake }}", {{ $f.Name | camel }}, withEdges)
+                if err != nil {
+                    return nil, err
+                }
+                if len({{ $table.Name | camel | plural }}) != 1 {
+                    return nil, status.Errorf(codes.NotFound, "")
+                }
+                return {{ $table.Name | camel | plural }}[0], err
+            }
+            func (r *repository) BatchGet{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx context.Context, {{ $f.Name | camel | plural }} []{{ $f.Type.Kind }}, withEdges bool) ([]*models.{{ $table.Name | pascal }}, error) {
+                return r.get{{ $table.Name | pascal | plural }}(ctx, "{{ $f.Name | snake }}", {{ $f.Name | camel | plural }}, withEdges)
+            }
+        {{- end}}
+    {{- end}}
+{{- end}}

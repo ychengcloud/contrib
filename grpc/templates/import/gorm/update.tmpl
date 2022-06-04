@@ -1,0 +1,79 @@
+{{ $table := . }}
+{{ $g := .Generator }}
+
+func (r *repository) Update{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel }} *models.{{ $table.Name | pascal }}, updateMask []string) (*models.{{ $table.Name | pascal }}, error) {
+
+	if {{ $table.Name | camel }} == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid argument: {{ $table.ID.Name | camel }} is not provided")
+	}
+
+	var err error
+	tx := r.db.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if len(updateMask) > 0 {
+		tx = tx.Select(updateMask)
+	} else {
+        tx = tx.Select({{- $g.Template "import/fields_array.tmpl" $table.Fields -}})
+    }
+
+	if err = tx.Updates({{ $table.Name | camel }}).Error; err != nil {
+		return nil, err
+	}
+
+	switch {
+	case err == nil:
+		tx.Commit()
+
+		return {{ $table.Name | camel }}, nil
+	case database.IsUniqueConstraintError(err):
+		return nil, status.Errorf(codes.AlreadyExists, "already exists: %s", err)
+	case errors.Is(err, gorm.ErrInvalidField):
+		return nil, status.Errorf(codes.InvalidArgument, "invalid argument: %s", err)
+	default:
+		return nil, status.Errorf(codes.Internal, "internal: %s", err)
+	}
+}
+
+
+func (r *repository) BatchUpdate{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel | plural }} []*models.{{ $table.Name | pascal }}, updateMask []string) ([]*models.{{ $table.Name | pascal }}, error) {
+	var err error
+	tx := r.db.Begin()
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if len(updateMask) > 0 {
+		tx = tx.Select(updateMask)
+	} else {
+        tx = tx.Select({{ $g.Template "import/fields_array.tmpl" $table.Fields }})
+    }
+
+	for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+		if {{ $table.Name | camel }} == nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid argument: {{ .Name | camel }} is not provided")
+		}
+		
+		if err = tx.Updates({{ $table.Name | camel | plural }}).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	switch {
+	case err == nil:
+		tx.Commit()
+		return {{ $table.Name | camel | plural }}, nil
+	case database.IsUniqueConstraintError(err):
+		return nil, status.Errorf(codes.AlreadyExists, "already exists: %s", err)
+	case errors.Is(err, gorm.ErrInvalidField):
+		return nil, status.Errorf(codes.InvalidArgument, "invalid argument: %s", err)
+	default:
+		return nil, status.Errorf(codes.Internal, "internal: %s", err)
+	}
+}

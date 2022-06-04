@@ -1,0 +1,165 @@
+{{ $table := . }}
+// 处理  过滤条件
+// op 取值 OR, AND, NOT
+func apply{{ $table.Name | pascal }}Filter(filterInput *models.{{ $table.Name | pascal }}FilterInput) (clause.Expression, error) {
+    var exprs []clause.Expression
+    if filterInput == nil {
+        return nil, nil
+    }
+
+    {{- range $f := $table.Fields}}
+    {{- if $f.Filterable }}
+    if filterInput.{{ $f.Name | pascal }} != nil {
+        {{- range $op := $f.Ops }}
+            {{- if eq $op.Name "Eq"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                        exprs = append(exprs, clause.Eq{
+                        Column: "{{ $f.Name }}",
+                        Value:  *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "In"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                        exprs = append(exprs, clause.Eq{
+                        Column: "{{ $f.Name }}",
+                        Value:  filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}					
+            {{- if eq $op.Name "Neq"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                        exprs = append(exprs, clause.Neq{
+                        Column: "{{ $f.Name }}",
+                        Value:  *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "NotIn"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                        exprs = append(exprs, clause.Neq{
+                        Column: "{{ $f.Name }}",
+                        Value:  filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "Gt"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                        exprs = append(exprs, clause.Gt{
+                        Column: "{{ $f.Name }}",
+                        Value:  *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "Gte"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                    exprs = append(exprs, clause.Gte{
+                        Column: "{{ $f.Name }}",
+                        Value:  *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "Lt"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                    exprs = append(exprs, clause.Lt{
+                        Column: "{{ $f.Name }}",
+                        Value:  *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}				
+            {{- if eq $op.Name "Lte"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                        exprs = append(exprs, clause.Lte{
+                        Column: "{{ $f.Name }}",
+                        Value:  *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }},
+                    })
+                }
+            {{- end }}					
+            {{- if eq $op.Name "Contains"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                    exprs = append(exprs, clause.Like{
+                        Column: "{{ $f.Name }}",
+                        Value:  fmt.Sprintf("%%%s%%", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}),
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "StartsWith"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                    exprs = append(exprs, clause.Like{
+                        Column: "{{ $f.Name }}",
+                        Value:  fmt.Sprintf("%%%s", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}),
+                    })
+                }
+            {{- end }}
+            {{- if eq $op.Name "EndsWith"}}
+                if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                    exprs = append(exprs, clause.Like{
+                        Column: "{{ $f.Name }}",
+                        Value:  fmt.Sprintf("%s%%", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}),
+                    })
+                }
+            {{- end }}		
+        {{- end }}
+    }
+    {{- end}}
+    {{- end}}
+
+    if filterInput.NOT != nil {
+        e, err := apply{{ $table.Name | pascal }}Filter(filterInput.NOT)
+        if err != nil {
+            return nil, err
+        }
+        exprs = append(exprs, clause.Not(e))
+    }
+
+    if filterInput.OR != nil {
+        switch n := len(filterInput.OR); {
+        case n == 1:
+            e, err := apply{{ $table.Name | pascal }}Filter(filterInput.OR[0])
+            if err != nil {
+                return nil, err
+            }
+            exprs = append(exprs, e)
+        case n > 1:
+            or := make([]clause.Expression, 0, n)
+            for _, w := range filterInput.OR {
+                e, err := apply{{ $table.Name | pascal }}Filter(w)
+                if err != nil {
+                    return nil, err
+                }
+                or = append(or, e)
+            }
+            exprs = append(exprs, clause.Or(or...))
+        }
+    }
+
+    if filterInput.AND != nil {
+        switch n := len(filterInput.AND); {
+        case n == 1:
+            e, err := apply{{ $table.Name | pascal }}Filter(filterInput.AND[0])
+            if err != nil {
+                return nil, err
+            }
+            exprs = append(exprs, e)
+        case n > 1:
+            and := make([]clause.Expression, 0, n)
+            for _, w := range filterInput.AND {
+                e, err := apply{{ $table.Name | pascal }}Filter(w)
+                if err != nil {
+                    return nil, err
+                }
+                and = append(and, e)
+            }
+            exprs = append(exprs, clause.And(and...))
+        }
+    }
+
+    switch len(exprs) {
+    case 0:
+        return nil, fmt.Errorf("empty apply{{ $table.Name | pascal }}Filter")
+    case 1:
+        return exprs[0], nil
+    default:
+        return clause.And(exprs...), nil
+    }
+}

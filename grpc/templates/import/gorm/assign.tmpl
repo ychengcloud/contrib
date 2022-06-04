@@ -1,0 +1,60 @@
+{{ $table := . }}
+
+{{- range $f := .Fields}}
+	{{- if $f.RelManyToMany }}
+		func (r *repository) {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }} )  error {
+
+			db := r.db
+			var err error
+
+			tx := db.Begin()
+			defer func() {
+				if err != nil {
+					tx.Rollback()
+				}
+			}()
+
+			pairs := make([]map[string]interface{}, len({{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }}))
+			for i, {{ $f.Rel.JoinTable.JoinRefField.Name | camel }} := range {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} {
+				pairs[i] = map[string]interface{}{"{{ $f.Rel.JoinTable.JoinField.Name }}": {{ $f.Rel.JoinTable.JoinField.Name | camel }}, "{{ $f.Rel.JoinTable.JoinRefField.Name }}": {{ $f.Rel.JoinTable.JoinRefField.Name | camel -}} }
+			}
+			err = tx.Table("{{ $f.Rel.JoinTable.Name }}").Create(pairs).Error
+			if err != nil {
+				return err
+			}
+			switch {
+			case err == nil:
+				tx.Commit()
+				return nil
+			default:
+				return status.Errorf(codes.Internal, "internal error: %s", err)
+			}
+		}
+
+		func (r *repository) {{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }} )  error {
+
+			db := r.db
+			var err error
+
+			tx := db.Begin()
+			defer func() {
+				if err != nil {
+					tx.Rollback()
+				}
+			}()
+
+			err = tx.Table("{{ $f.Rel.JoinTable.Name }}").Where("`{{ $f.Rel.JoinTable.JoinField.Name }}` = ? AND `{{ $f.Rel.JoinTable.JoinRefField.Name  }}` IN (?)", {{ $f.Rel.JoinTable.JoinField.Name | camel }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }}).Delete(nil).Error
+			if err != nil {
+				return err
+			}
+
+			switch {
+			case err == nil:
+				tx.Commit()
+				return nil
+			default:
+				return status.Errorf(codes.Internal, "internal error: %s", err)
+			}
+		}
+	{{- end}}
+{{- end}}

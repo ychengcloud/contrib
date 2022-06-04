@@ -1,0 +1,156 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/bxcodec/faker/v3"
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
+
+	pb "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1"
+	"{{ .Package }}/models"
+	"{{ .Package }}/test"
+)
+
+{{- $svc := .Project | title}}
+{{- $table := .}}
+
+func createTest{{ $table.Name | pascal }}(t *testing.T, operationContext context.Context, svc *{{ $svc }}Service, test{{ $table.Name | pascal }} *models.{{ $table.Name | pascal }}) *pb.{{ $table.Name | pascal }} {
+	resp, err := svc.Create{{ $table.Name | pascal }}(operationContext, &pb.Create{{ $table.Name | pascal }}Request{
+		{{ $table.Name | pascal }}: test{{ $table.Name | pascal }}.ToPB(),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.NotEmpty(t, resp.Id)
+
+	return resp
+}
+
+func TestCreate{{ $table.Name | pascal }}(t *testing.T) {
+	ctx := context.Background()
+	test{{ $table.Name | pascal }} := test.Test{{ $table.Name | pascal | plural }}[0]
+	svc := newTest{{ $svc }}Service(t, ctx)
+
+	repo.EXPECT().
+		Create{{ $table.Name | pascal }}(ctx, gomock.Any()).
+		Times(1).Return(test{{ $table.Name | pascal }}, nil)
+
+	createTest{{ $table.Name | pascal }}(t, ctx, svc, test{{ $table.Name | pascal }})
+}
+
+func assert{{ $table.Name | pascal }}Equal(t *testing.T, expected *pb.{{ $table.Name | pascal }}, actual *pb.{{ $table.Name | pascal }}) {
+	{{- range $f := .Fields}}
+		{{- if $f.RelNone }}
+			{{- if not (eq ($f.Name | pascal) "CreatedAt" "UpdatedAt" ) }}
+				assert.Equal(t, expected.{{ $f.Name | pascal }}, actual.{{ $f.Name | pascal }})
+			{{- end}}
+		{{- end}}
+	{{- end}}
+}
+
+func TestList{{ $table.Name | pascal | plural }}(t *testing.T) {
+	ctx := context.Background()
+
+	{{ $table.Name | camel | plural }} := []*models.{{ $table.Name | pascal }}{
+		test.Test{{ $table.Name | pascal | plural }}[0],
+		test.Test{{ $table.Name | pascal | plural }}[1],
+	}
+	svc := newTest{{ $svc }}Service(t, ctx)
+
+	repo.EXPECT().
+		List{{ $table.Name | pascal | plural }}(ctx, gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), int32(10), "", false).
+		Times(1).Return({{ $table.Name | camel | plural }}, "", int64(2), nil)
+
+	listResponse, err := svc.List{{ $table.Name | pascal | plural }}(ctx, &pb.List{{ $table.Name | pascal | plural }}Request{
+		PageSize: 10,
+		OrderBy:  "created_at asc",
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, listResponse)
+	assert.Len(t, listResponse.{{ $table.Name | pascal | plural }}, 2)
+	assert.Equal(t, listResponse.TotalCount, int32(2))
+	assert{{ $table.Name | pascal }}Equal(t, {{ $table.Name | camel | plural }}[0].ToPB(), listResponse.{{ $table.Name | pascal | plural }}[0])
+	assert{{ $table.Name | pascal }}Equal(t, {{ $table.Name | camel | plural }}[1].ToPB(), listResponse.{{ $table.Name | pascal | plural }}[1])
+}
+
+{{- range $f := .Fields}}
+    {{- if not $f.Remote }}
+		{{- if $f.Filterable }}
+			func TestGet{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(t *testing.T) {
+				ctx := context.Background()
+				test{{ $table.Name | pascal }} := test.Test{{ $table.Name | pascal | plural }}[0]
+				svc := newTest{{ $svc }}Service(t, ctx)
+
+				repo.EXPECT().
+					Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx, test{{ $table.Name | pascal }}.{{ $f.Name | pascal }}, false).
+					Times(1).Return(test{{ $table.Name | pascal }}, nil)
+				repo.EXPECT().
+					Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx, nil, false).
+					Times(1).Return(nil, errors.New("not provided"))
+
+				getResponse, err := svc.Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx, &pb.Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}Request{ {{- $f.Name | pascal }}: test{{ $table.Name | pascal }}.{{ $f.Name | pascal }} })
+				assert.NoError(t, err)
+				assert.NotNil(t, getResponse)
+				assert{{ $table.Name | pascal }}Equal(t, test{{ $table.Name | pascal }}.ToPB(), getResponse)
+
+				getResponse, err = svc.Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx, nil)
+				assert.Error(t, err, "because request is empty")
+				assert.Contains(t, err.Error(), "not provided")
+				assert.Nil(t, getResponse)
+
+			}
+		{{- end}}
+	{{- end}}
+{{- end}}
+
+func TestUpdate{{ $table.Name | pascal }}(t *testing.T) {
+	ctx := context.Background()
+
+	test{{ $table.Name | pascal }} := test.Test{{ $table.Name | pascal | plural }}[0]
+
+	{{- range $f := .Fields}}
+		{{- if $f.RelNone }}
+			{{- if not $f.PrimaryKey }}
+				err = faker.FakeData(&test{{ $table.Name | pascal }}.{{ $f.Name | pascal }})
+				assert.NoError(t, err)
+			{{- end}}
+		{{- end}}
+	{{- end}}
+	svc := newTest{{ $svc }}Service(t, ctx)
+
+	repo.EXPECT().
+		Update{{ $table.Name | pascal }}(ctx, gomock.Any(), gomock.Any()).
+		Times(1).Return(test{{ $table.Name | pascal }}, nil)
+
+	updateResponse, err := svc.Update{{ $table.Name | pascal }}(ctx, &pb.Update{{ $table.Name | pascal }}Request{
+		{{ $table.Name | pascal }}: test{{ $table.Name | pascal }}.ToPB(),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, updateResponse)
+
+	assert{{ $table.Name | pascal }}Equal(t, test{{ $table.Name | pascal }}.ToPB(), updateResponse)
+}
+
+func TestDelete{{ $table.Name | pascal }}(t *testing.T) {
+	ctx := context.Background()
+
+	test{{ $table.Name | pascal }} := test.Test{{ $table.Name | pascal | plural }}[0]
+	svc := newTest{{ $svc }}Service(t, ctx)
+
+	repo.EXPECT().
+		Delete{{ $table.Name | pascal }}(ctx, test{{ $table.Name | pascal }}.{{ $table.ID.Name | pascal }}).
+		Times(1).Return(nil)
+	repo.EXPECT().
+		Delete{{ $table.Name | pascal }}(ctx, nil).
+		Times(1).Return(errors.New("not provided"))
+
+	deleteResponse, err := svc.Delete{{ $table.Name | pascal }}(ctx, &pb.Delete{{ $table.Name | pascal }}Request{Id: test{{ $table.Name | pascal }}.Id})
+	assert.NoError(t, err)
+	assert.NotNil(t, deleteResponse)
+
+	deleteResponse, err = svc.Delete{{ $table.Name | pascal }}(ctx, nil)
+	assert.Error(t, err, "because request is empty")
+	assert.Nil(t, deleteResponse)
+}

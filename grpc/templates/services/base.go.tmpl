@@ -1,0 +1,38 @@
+package services
+
+import (
+	"github.com/iancoleman/strcase"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	"{{ .Package }}/repositories"
+	pb "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1"
+)
+
+type {{ .Project | title }}Service struct {
+	pb.{{ .Project | title }}ServiceServer
+	repo repositories.Repository
+}
+
+func New{{ .Project | title }}Service(repo repositories.Repository) *{{ .Project | title }}Service {
+	return &{{ .Project | title }}Service{
+		repo: repo,
+	}
+}
+
+func CamelCaseFieldMask(mask *fieldmaskpb.FieldMask) {
+	if mask == nil || mask.Paths == nil {
+		return
+	}
+
+	var newPaths []string
+	for _, path := range mask.Paths {
+		lowerCasedParts := strings.Split(path, ".")
+		var camelCasedParts []string
+		for _, part := range lowerCasedParts {
+			camelCasedParts = append(camelCasedParts, strcase.ToCamel(part))
+		}
+		newPaths = append(newPaths, strings.Join(camelCasedParts, "."))
+	}
+
+	mask.Paths = newPaths
+}
