@@ -41,7 +41,7 @@
 		{{- end}}
 
 		{{- if .RelManyToMany }}
-			{{- $tags = (printf "%s;many2many:%s;joinForeignKey:%s;joinReferences:%s" $tags (.Rel.JoinTable.JoinField.Name | pascal) (.Rel.JoinTable.JoinField.Name | pascal) (.Rel.JoinTable.JoinRefField.Name | pascal)) }}
+			{{- $tags = (printf "%s;many2many:%s;joinForeignKey:%s;joinReferences:%s" $tags (.Rel.JoinTable.Name | pascal) (.Rel.JoinTable.JoinField.Name | pascal) (.Rel.JoinTable.JoinRefField.Name | pascal)) }}
 		{{- end}}
 		{{- if not .RelNone }}
 			{{- $tags = (printf "%s\" faker:\"-" $tags)}}

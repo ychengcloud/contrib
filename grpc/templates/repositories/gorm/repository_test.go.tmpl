@@ -358,7 +358,9 @@ func TestUpdate{{ $table.Name | pascal }}(t *testing.T) {
 				{{- range $f := $table.Fields -}}
 					{{- if $f.RelNone -}}
 						{{- if not .AutoIncrement -}}
-							model.{{- $f.Name | pascal -}},
+							{{- if not .PrimaryKey -}}
+								model.{{- $f.Name | pascal -}},
+							{{- end -}}
 						{{- end -}}
 					{{- end -}}
 				{{- end -}}model.{{ $table.ID.Name | pascal }}).WillReturnResult(sqlmock.NewResult(1, 1))
@@ -371,9 +373,11 @@ func TestUpdate{{ $table.Name | pascal }}(t *testing.T) {
 		{{- range $f := $table.Fields -}}
 			{{- if $f.RelNone -}}
 				{{- if not .AutoIncrement -}}
-					{{- $masks = append $masks (printf "\"%s\"" ( $f.Name | pascal ) ) }}
-					{{- $setNames = append $setNames (printf "`%s`=?" $f.Name) }}
-					{{- $setArgs = append $setArgs (printf "model.%s" ( $f.Name | pascal ) ) }}
+					{{- if not .PrimaryKey -}}
+						{{- $masks = append $masks (printf "\"%s\"" ( $f.Name | pascal ) ) }}
+						{{- $setNames = append $setNames (printf "`%s`=?" $f.Name) }}
+						{{- $setArgs = append $setArgs (printf "model.%s" ( $f.Name | pascal ) ) }}
+					{{- end -}}
 				{{- end -}}
 			{{- end -}}
 		{{- end -}}

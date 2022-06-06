@@ -41,7 +41,7 @@ type {{ $table.Name | pascal }}FilterInput struct {
 }
 
 {{- range $f := .Fields}}
-	{{- if .Filterable }}
+	{{- if $f.Filterable }}
 		type {{ $table.Name | pascal }}Op{{ $f.Name | pascal }}Input struct {
 			{{- range $index, $op := $f.Ops }}
 				{{- $t := (printf "*%s" $f.Type.Kind) }}

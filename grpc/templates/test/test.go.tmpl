@@ -1,0 +1,32 @@
+package test
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/orlangure/gnomock"
+	"github.com/orlangure/gnomock/preset/mysql"
+
+	repogorm "{{ .Package }}/repositories/gorm"
+)
+
+func RunContainerForTest(ctx context.Context, queriesFile string) (*gnomock.Container, error) {
+	p := mysql.Preset(
+		mysql.WithDatabase("{{ .Generator.Schema.Name }}"),
+		mysql.WithQueriesFile(queriesFile),
+	)
+	path, _ := os.Getwd()
+	fmt.Println("Path:", path)
+	return gnomock.Start(p)
+	// return gnomock.Start(p, gnomock.WithDebugMode())
+
+}
+
+func DSNOptForTest(addr string) repogorm.Option {
+	address := strings.Split(addr, ":")
+	port, _ := strconv.Atoi(address[1])
+	return repogorm.WithDSN(fmt.Sprintf("mysql://gnomock:gnomick@tcp(%s:%d)/{{ .Generator.Schema.Name }}", address[0], port))
+}

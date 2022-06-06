@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"{{ .Package }}/config"
-	"{{ .Package }}/database"
 	repogorm "{{ .Package }}/repositories/gorm"
 	"{{ .Package }}/server"
 	"{{ .Package }}/services"
@@ -31,17 +30,13 @@ func main() {
 
 	}
 
-	db, err := database.NewGorm(context.Background(),
-		database.WithMysqlHost(cfg.DatabaseConfig.MysqlOptions.Host),
-		database.WithMysqlName(cfg.DatabaseConfig.MysqlOptions.Name),
-		database.WithMysqlUser(cfg.DatabaseConfig.MysqlOptions.User),
-		database.WithMysqlPassword(cfg.DatabaseConfig.MysqlOptions.Password),
+	repo, err := repogorm.New{{ .Project | pascal }}Repository(context.Background(),
+		repogorm.WithDSN(cfg.DatabaseConfig.DSN),
 	)
 	if err != nil {
-		log.Fatalf("failed create database: %s", err)
+		log.Fatalln("Failed to create repository:", err)
 	}
 
-	repo := repogorm.New{{ .Project | pascal }}Repository(db)
 	{{ .Project | camel }}Service := services.New{{ .Project | pascal }}Service(repo)
 
 	s := server.NewServer(logger, cfg, {{ .Project | camel }}Service)

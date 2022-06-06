@@ -21,7 +21,7 @@ func (r *repository) Create{{ $table.Name | pascal }}(ctx context.Context, {{ $t
     case err == nil:
         tx.Commit()
         return {{ $table.Name | camel }}, nil
-    case database.IsUniqueConstraintError(err):
+    case IsUniqueConstraintError(err):
         return nil, status.Errorf(codes.AlreadyExists, "already exists: %s", err)
     case errors.Is(err, gorm.ErrInvalidField):
         return nil, status.Errorf(codes.InvalidArgument, "invalid argument: %s", err)
@@ -53,7 +53,7 @@ func (r *repository) BatchCreate{{ $table.Name | pascal }}(ctx context.Context, 
     case err == nil:
         tx.Commit()
         return {{ $table.Name | camel | plural }}, nil
-    case database.IsUniqueConstraintError(err):
+    case IsUniqueConstraintError(err):
         return nil, status.Errorf(codes.AlreadyExists, "already exists: %s", err)
     case errors.Is(err, gorm.ErrInvalidField):
         return nil, status.Errorf(codes.InvalidArgument, "invalid argument: %s", err)

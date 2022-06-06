@@ -11,15 +11,10 @@ app:
 
 
 db:
-  dialect: mysql
-  mysql:
-    user: root
-    password: ""
-    host: "127.0.0.1"
-    port: 3306
-    name: project
-    charset: utf8mb4
-    debug: true
+  dsn: "mysql://root:@tcp(127.0.0.1:3306)/<dbname>?charset=utf8mb4"
+  debug: false
+  authMigrate: false
+  
 logger:
   filename: /tmp/.log
   maxSize: 500

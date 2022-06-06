@@ -1,6 +1,14 @@
 package repogorm
 
 import (
+	"context"
+	"fmt"
+	"strings"
+
+	"emperror.dev/errors"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"{{ .Package }}/repositories"
@@ -10,13 +18,137 @@ const (
 	MaxLimit = 1000
 )
 
+var (
+	ErrNoDatabaseDsn = errors.New("no database dsn")
+)
+
+var defaultOptions = options{
+	autoMigrate: false,
+	debug:       true,
+}
+
+type options struct {
+	dsn         string `yaml:"dsn"`
+	autoMigrate bool   `yaml:"autoMigrate"`
+	debug       bool
+}
+
+// Option 定义参数项
+type Option func(*options)
+
+//WithDSN 设定 dsn
+func WithDSN(dsn string) Option {
+	return func(o *options) {
+		o.dsn = dsn
+	}
+}
+
+//WithAutoMigrate 设定 autoMigrate
+func WithAutoMigrate(autoMigrate bool) Option {
+	return func(o *options) {
+		o.autoMigrate = autoMigrate
+	}
+}
+
+//WithDebug 设定 debug
+func WithDebug(debug bool) Option {
+	return func(o *options) {
+		o.debug = debug
+	}
+}
+
 type repository struct {
 	repositories.Repository
 	db *gorm.DB
 }
 
-func New{{ .Project | pascal }}Repository(db *gorm.DB) *repository {
+func New{{ .Project | pascal }}Repository(ctx context.Context, opts ...Option) (*repository, error) {
+	db, err := newGorm(context.Background(), opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	return &repository{
 		db: db,
+	}, nil
+}
+
+// newGorm
+func newGorm(ctx context.Context, opts ...Option) (db *gorm.DB, err error) {
+	o := defaultOptions
+	for _, opt := range opts {
+		opt(&o)
 	}
+
+	i := strings.Index(o.dsn, "://")
+	if i == -1 {
+		return nil, fmt.Errorf("invalid data source name: %s", o.dsn)
+	}
+
+	dialect := strings.TrimSpace(o.dsn[:i])
+	dsn := o.dsn[i+3:]
+	var dialector gorm.Dialector
+	switch dialect {
+	case "mysql":
+		dialector = mysql.Open(dsn)
+	case "sqlite":
+		dialector = sqlite.Open(dsn)
+	case "postgres":
+		dialector = postgres.Open(dsn)
+	default:
+		return nil, errors.Wrap(err, "dialect error")
+
+	}
+
+	db, err = gorm.Open(dialector, &gorm.Config{
+		NamingStrategy: schema.NamingStrategy{
+			// TablePrefix:   "t_",                              // table name prefix, table for `User` would be `t_users`
+			SingularTable: true, // use singular table name, table for `User` would be `user` with this option enabled
+		},
+	})
+
+	if o.debug {
+		db = db.Debug()
+	}
+
+	// gorm:create 之前
+	// db.Callback().Create().Before("gorm:create").Register("update_id", UpdateID)
+
+	if o.autoMigrate {
+		// db.AutoMigrate(&models.Account{})
+	}
+
+	return db, err
+}
+
+// IsUniqueConstraintError reports if the error resulted from a DB uniqueness constraint violation.
+// e.g. duplicate value in unique index.
+func IsUniqueConstraintError(err error) bool {
+	uniquenessErrors := []string{
+		"Error 1062",                 // MySQL
+		"violates unique constraint", // Postgres
+		"UNIQUE constraint failed",   // SQLite
+	}
+	for _, s := range uniquenessErrors {
+		if strings.Contains(err.Error(), s) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsForeignKeyConstraintError reports if the error resulted from a DB FK constraint violation.
+// e.g. parent row does not exist.
+func IsForeignKeyConstraintError(err error) bool {
+	fkErrors := []string{
+		"Error 1452",                      // MySQL
+		"violates foreign key constraint", // Postgres
+		"FOREIGN KEY constraint failed",   // SQLite
+	}
+	for _, s := range fkErrors {
+		if strings.Contains(err.Error(), s) {
+			return true
+		}
+	}
+	return false
 }

@@ -126,7 +126,7 @@ service {{ .Project | pascal }}Service {
                 {{- end }}
 
                 {{- if or $field.RelManyToMany $field.RelHasMany }}
-                    repeated {{$type}} {{ $field.Name | snake | plural }} = {{add $index 1}}{{$behavior}};
+                    repeated {{$type}} {{ $field.Name | plural | snake }} = {{add $index 1}}{{$behavior}};
                 {{- else }}
                     {{$type}} {{ $field.Name | snake }} = {{add $index 1}}{{$behavior}};
                 {{- end}}
@@ -168,7 +168,7 @@ service {{ .Project | pascal }}Service {
     // The field name should match the noun "{{ $table.Name | pascal}}" in the method name.
     // There will be a maximum number of items returned based on the page_size
     // field in the request.
-    repeated {{ $table.Name | pascal }} {{ $table.Name | snake | plural }} = 1;
+    repeated {{ $table.Name | pascal }} {{ $table.Name | plural | snake }} = 1;
 
     // Token to retrieve the next page of results, or empty if there are no more
     // results in the list.
@@ -204,7 +204,7 @@ service {{ .Project | pascal }}Service {
                 }
 
                 // The field will contain name of the resource requested.
-                repeated {{ $f.Type.ProtobufKind }} {{ $f.Name | snake | plural }} = 1;
+                repeated {{ $f.Type.ProtobufKind }} {{ $f.Name | plural | snake }} = 1;
                 View view = 2;
                 }
             {{- end}}
@@ -212,7 +212,7 @@ service {{ .Project | pascal }}Service {
     {{- end}}
 
     message Batch{{ $table.Name | pascal }}Response {
-        repeated {{ $table.Name | pascal}} {{ $table.Name | snake | plural }} = 1;
+        repeated {{ $table.Name | pascal}} {{ $table.Name | plural | snake }} = 1;
     }
 
     message Create{{ $table.Name | pascal }}Request {
@@ -230,7 +230,7 @@ service {{ .Project | pascal }}Service {
 
         // The {{ $table.Name | pascal }} resource to create.
         // The field name should match the Noun in the method name.
-        repeated {{ .Name | pascal }} {{ .Name | snake | plural }} = 2;
+        repeated {{ .Name | pascal }} {{ .Name | plural | snake }} = 2;
     }
 
     message Update{{ $table.Name | pascal }}Request {
@@ -245,7 +245,7 @@ service {{ .Project | pascal }}Service {
 
     message BatchUpdate{{ $table.Name | pascal }}Request {
         // The {{ $table.Name | pascal }} resource which replaces the resource on the server.
-        repeated {{ $table.Name | pascal }} {{ $table.Name | snake | plural}} = 1;
+        repeated {{ $table.Name | pascal }} {{ $table.Name | plural | snake}} = 1;
 
         // The update mask applies to the resource. For the `FieldMask` definition,
         // see
@@ -260,7 +260,7 @@ service {{ .Project | pascal }}Service {
 
     message BatchDelete{{ $table.Name | pascal }}Request {
         // The resource id of the {{ $table.Name | pascal }} to be deleted.
-        repeated {{ $table.ID.Type.ProtobufKind }} {{ $table.ID.Name | snake | plural }} = 1;
+        repeated {{ $table.ID.Type.ProtobufKind }} {{ $table.ID.Name | plural | snake }} = 1;
     }
 
     {{- range $f := .Fields}}
@@ -268,13 +268,13 @@ service {{ .Project | pascal }}Service {
             message {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}Request{
                 // The resource id of the {{ $f.Name | pascal | plural}} to be deleted.
                 {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
-                repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | snake | plural }} = 2;
+                repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 2;
                 }
 
                 message {{ $table.Name | pascal | plural }}UnassignWith{{ .Name | pascal | plural }}Request{
                     // The resource id of the {{ $f.Name | pascal | plural}} to be deleted.
                 {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
-                repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | snake | plural }} = 2;
+                repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 2;
             }
         {{- end}}
     {{- end}}

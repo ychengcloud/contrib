@@ -8,26 +8,10 @@ import (
 	"golang.org/x/oauth2"
 )
 
-type MysqlOptions struct {
-	User     string `yaml:"user" mapstructure:"user"`
-	Password string `yaml:"password" mapstructure:"password"`
-	Host     string `yaml:"host" mapstructure:"host"`
-	Port     int    `yaml:"port" mapstructure:"port"`
-	Name     string `yaml:"name" mapstructure:"name"`
-	Charset  string `yaml:"charset" mapstructure:"charset"`
-}
-
-type SqliteOptions struct {
-	Name string `yaml:"name" mapstructure:"name"`
-}
-
 type DatabaseConfig struct {
-	Dialect     string `yaml:"dialect" mapstructure:"dialect"`
+	DSN         string `yaml:"dsn" mapstructure:"dsn"`
 	AutoMigrate bool   `yaml:"autoMigrate" mapstructure:"autoMigrate"`
 	debug       bool
-
-	MysqlOptions  MysqlOptions  `yaml:"mysql" mapstructure:"mysql"`
-	SqliteOptions SqliteOptions `yaml:"sqlite" mapstructure:"sqlite"`
 }
 
 type LoggerConfig struct {

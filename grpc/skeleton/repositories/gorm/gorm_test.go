@@ -1,17 +1,18 @@
 package repogorm
 
 import (
-	"fmt"
+	"database/sql/driver"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"github.com/google/uuid"
 	"gorm.io/gorm/utils/tests"
-
-	pb "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1"
+	"gotest.tools/assert"
 )
 
 func checkWhere(t *testing.T, where *clause.Where, result string, vars []interface{}) {

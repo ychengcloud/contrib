@@ -16,17 +16,21 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"gorm.io/gorm"
 
-	"{{ .Package }}/database"
 	pb "{{ .Package }}/gen/proto/go/{{ .Project }}/v1"
 	"{{ .Package }}/repositories"
 	repogorm "{{ .Package }}/repositories/gorm"
 	"{{ .Package }}/services"
+	"{{ .Package }}/test"
 )
 
 const (
 	deadlinePerTest                 = time.Duration(5 * time.Second)
 	deadlineOnStartContanerForTests = time.Duration(60 * time.Second)
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 var testContainer *gnomock.Container
 var client pb.{{ .Project | pascal }}ServiceClient
@@ -62,7 +66,7 @@ func testMainWrapper(m *testing.M) int {
 	defer cancelFn()
 
 	var err error
-	testContainer, err = database.RunContainerForTest(ctx, "../../../database/schema.sql")
+	testContainer, err = test.RunContainerForTest(ctx, "../../../database/schema.sql")
 	if err != nil {
 		log.Printf("Failed to create test container: %s", err)
 		return 1
@@ -75,12 +79,11 @@ func testMainWrapper(m *testing.M) int {
 		}
 	}()
 
-	db, err = database.ConnectForTest(ctx, testContainer.DefaultAddress())
+	repo, err := repogorm.New{{ .Project | pascal }}Repository(ctx, test.DSNOptForTest(testContainer.DefaultAddress()))
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Failed to create repository: %s", err)
+		return 1
 	}
-
-	repo = repogorm.New{{ .Project | pascal }}Repository(db)
 
 	svc = services.New{{ .Project | pascal }}Service(repo)
 
@@ -102,17 +105,6 @@ func truncateTables(t *testing.T) {
 		assert.NoError(t, err)
 	{{- end}}
 
-}
-
-func newTest{{ .Project | pascal }}Service(t *testing.T, ctx context.Context) *services.{{ .Project | pascal }}Service {
-	db, err := database.ConnectForTest(ctx, testContainer.DefaultAddress())
-	assert.NoError(t, err)
-
-	repo := repogorm.New{{ .Project | pascal }}Repository(db)
-
-	svc := services.New{{ .Project | pascal }}Service(repo)
-
-	return svc
 }
 
 func assertResponseCodes(t *testing.T, expected error, code codes.Code) {
