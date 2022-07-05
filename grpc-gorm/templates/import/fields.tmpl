@@ -6,6 +6,9 @@
 
 		{{- if .RelNone}}
 			{{- $type = .Type.Kind }}
+			{{- if eq $type "json" }}
+				{{- $type = "JSON" }}
+			{{- end }}
 			{{- if eq $name "CreatedAt" }}
 				{{- $tags = (printf "%s;autoCreateTime:false" $tags)}}
 			{{- end }}

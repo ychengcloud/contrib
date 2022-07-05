@@ -13,7 +13,7 @@ import (
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 
-	pb "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1"
+	pb "{{ $g.Cfg.Attrs.protoPkg }}/gen/go/{{ .Project }}/v1"
 )
 
 type {{ $table.Name | pascal }} struct {

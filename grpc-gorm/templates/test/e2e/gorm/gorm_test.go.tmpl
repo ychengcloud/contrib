@@ -1,3 +1,4 @@
+{{ $g := .Generator }}
 package testgorm
 
 import (
@@ -16,7 +17,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"gorm.io/gorm"
 
-	pb "{{ .Package }}/gen/proto/go/{{ .Project }}/v1"
+	pb "{{ $g.Cfg.Attrs.protoPkg }}/gen/go/{{ .Project }}/v1"
 	"{{ .Package }}/repositories"
 	repogorm "{{ .Package }}/repositories/gorm"
 	"{{ .Package }}/services"

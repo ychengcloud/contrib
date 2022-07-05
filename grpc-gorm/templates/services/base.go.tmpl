@@ -1,3 +1,4 @@
+{{ $g := .Generator }}
 package services
 
 import (
@@ -5,7 +6,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"{{ .Package }}/repositories"
-	pb "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1"
+	pb "{{ $g.Cfg.Attrs.protoPkg }}/gen/go/{{ .Project }}/v1"
 )
 
 type {{ .Project | title }}Service struct {
