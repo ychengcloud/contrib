@@ -1,0 +1,949 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package test
+
+import (
+	"context"
+
+	entsql "entgo.io/ent/dialect/sql"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"{{ .Package }}/domain"
+	"{{ .Package }}/repository"
+	"{{ .Package }}/repository/sql"
+)
+
+type testRepository struct {
+	repository.DBContext
+}
+
+func NewTestRepository(dbContext repository.DBContext) *testRepository {
+	return &testRepository{
+		DBContext: dbContext,
+	}
+}
+
+func loadPostRelations(ctx context.Context, dialect string, querier domain.Querier, posts ...*post) ([]*post, error) {
+	if len(posts) == 0 {
+		return nil, nil
+	}
+	ids := make([]any, 0, len(posts))
+	for _, p := range posts {
+		ids = append(ids, p.Id)
+	}
+
+	// Load has one relationship
+	metaQuery := sql.Query(dialect, querier, &meta{})
+	metaSlice, err := metaQuery.Find(ctx, entsql.In("post_id", ids...))
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range posts {
+		for _, m := range metaSlice {
+			if m.PostId == p.Id {
+				p.Meta = m
+			}
+		}
+	}
+
+	// Load has many relationship
+	commentQuery := sql.Query(dialect, querier, &comment{})
+	comments, err := commentQuery.Find(ctx, entsql.In("post_id", ids...))
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range posts {
+		p.Comments = make([]*comment, 0)
+		for _, c := range comments {
+			if c.PostId == p.Id {
+				p.Comments = append(p.Comments, c)
+			}
+		}
+	}
+
+	// Load many to many relationship
+	joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+	err = sql.LoadManyToManyRelation(ctx, dialect, querier, joinTable, posts, func(postIds []any, tagIds []any, postSet map[any]*post, tagSet map[any]*tag) error {
+		for i := range postIds {
+			if post, ok := postSet[postIds[i]]; ok {
+				post.Tags = append(post.Tags, tagSet[tagIds[i]])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return posts, nil
+}
+
+func listPosts(ctx context.Context, dialect string, querier domain.Querier, parent string, parentName string, filter *postFilterInput, orderBy string, pageSize int32, pageToken string, withEdges bool) (posts []*post, nextToken string, err error) {
+	var preds []*entsql.Predicate
+
+	if len(parent) > 0 && len(parentName) > 0 {
+		p, err := applyPostParent(ctx, dialect, querier, parent, parentName)
+		if err != nil {
+			return nil, "", err
+		}
+
+		preds = append(preds, p)
+	}
+	if filter != nil {
+		preds = append(preds, applyPostFilter(ctx, filter))
+	}
+
+	var pred *entsql.Predicate
+	switch len(preds) {
+	case 0:
+	case 1:
+		pred = preds[0]
+	default:
+		pred = entsql.And(preds...)
+	}
+
+	query := sql.Query(dialect, querier, &post{})
+
+	posts, nextToken, err = query.List(ctx, pred, orderBy, pageSize, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if withEdges {
+		posts, err = loadPostRelations(ctx, dialect, querier, posts...)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	return
+}
+
+func (r *testRepository) ListPosts(ctx context.Context, parent string, parentName string, filter *postFilterInput, orderBy string, pageSize int32, pageToken string, withEdges bool) (posts []*post, nextToken string, err error) {
+
+	return listPosts(ctx, r.Dialect(), r.DB(), parent, parentName, filter, orderBy, pageSize, pageToken, withEdges)
+}
+
+func (r *testRepository) GetPostById(ctx context.Context, id int64, withEdges bool) (*post, error) {
+	query := sql.Query(r.Dialect(), r.DB(), &post{})
+	posts, err := query.Find(ctx, entsql.EQ("id", id))
+	if err != nil {
+		return nil, err
+	}
+	if len(posts) != 1 {
+		return nil, status.Errorf(codes.Internal, "")
+	}
+
+	if withEdges {
+		posts, err = loadPostRelations(ctx, r.Dialect(), r.DB(), posts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return posts[0], err
+}
+
+func (r *testRepository) BatchGetPostById(ctx context.Context, ids []int64, withEdges bool) ([]*post, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	values := make([]any, len(ids))
+	for i := range ids {
+		values[i] = ids[i]
+	}
+	query := sql.Query(r.Dialect(), r.DB(), &post{})
+	posts, err := query.Find(ctx, entsql.In("id", values...))
+	if withEdges {
+		posts, err = loadPostRelations(ctx, r.Dialect(), r.DB(), posts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return posts, err
+}
+
+func mutatePostRelations(ctx context.Context, dialect string, execer domain.Execer, p *post, onConflict ...entsql.ConflictOption) (*post, error) {
+	var err error
+	// Mutate belongs to relationship
+	if p.User != nil {
+		_, err = createUser(ctx, dialect, execer, p.User, onConflict...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Mutate has one relationship
+	if p.Meta != nil {
+		_, err = createMeta(ctx, dialect, execer, p.Meta, onConflict...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Mutate has many relationship
+	if len(p.Comments) > 0 {
+		for _, c := range p.Comments {
+			c.PostId = p.Id
+		}
+		_, err = batchCreateComment(ctx, dialect, execer, p.Comments, onConflict...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Mutate many to many relationship
+	if len(p.Tags) > 0 {
+		values := make([][]any, 0)
+		for _, t := range p.Tags {
+			values = append(values, []any{p.Id, t.Id})
+		}
+		joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+		err = sql.AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
+}
+
+func batchMutatePostRelations(ctx context.Context, dialect string, execer domain.Execer, posts []*post, onConflict ...entsql.ConflictOption) ([]*post, error) {
+	var err error
+	// Insert belongs to relationship
+	users := make([]*user, 0)
+	for _, post := range posts {
+		if post.User != nil {
+			users = append(users, post.User)
+		}
+
+	}
+	if len(users) > 0 {
+		_, err = batchCreateUser(ctx, dialect, execer, users, onConflict...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Insert has one relationship
+	metaSlice := make([]*meta, 0)
+	for _, post := range posts {
+		if post.Meta != nil {
+			post.Meta.PostId = post.Id
+			metaSlice = append(metaSlice, post.Meta)
+		}
+
+	}
+	if len(metaSlice) > 0 {
+		_, err = batchCreateMeta(ctx, dialect, execer, metaSlice, onConflict...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Insert has many relationship
+	comments := make([]*comment, 0)
+	for _, p := range posts {
+		for _, c := range p.Comments {
+			if c != nil {
+				c.PostId = p.Id
+				comments = append(comments, c)
+			}
+		}
+	}
+	if len(comments) > 0 {
+		_, err = batchCreateComment(ctx, dialect, execer, comments, onConflict...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Insert many to many relationship
+	tagIds := make(map[int64]int64, 0)
+	for _, p := range posts {
+		for _, t := range p.Tags {
+			tagIds[p.Id] = t.Id
+		}
+	}
+
+	values := make([][]any, 0)
+	for _, p := range posts {
+		for _, t := range p.Tags {
+			values = append(values, []any{p.Id, t.Id})
+		}
+	}
+
+	if len(values) > 0 {
+		joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+		err = sql.AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return posts, nil
+}
+
+func createPost(ctx context.Context, dialect string, execer domain.Execer, p *post) (*post, error) {
+	var err error
+	creator := sql.Create(dialect, execer, &post{})
+	p, err = creator.Save(ctx, p)
+
+	if err != nil {
+		return nil, err
+	}
+
+	p, err = mutatePostRelations(ctx, dialect, execer, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+func (r *testRepository) CreatePost(ctx context.Context, p *post) (*post, error) {
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	p, err = createPost(ctx, r.Dialect(), tx, p)
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+	return p, nil
+}
+
+func batchCreatePost(ctx context.Context, dialect string, execer domain.Execer, posts []*post, onConflict ...entsql.ConflictOption) ([]*post, error) {
+	if len(posts) == 0 {
+		return posts, nil
+	}
+	var err error
+	creator := sql.Create(dialect, execer, &post{}, onConflict...)
+	posts, err = creator.BatchSave(ctx, posts)
+
+	if err != nil {
+		return nil, err
+	}
+
+	posts, err = batchMutatePostRelations(ctx, dialect, execer, posts)
+	if err != nil {
+		return nil, err
+	}
+
+	return posts, nil
+}
+
+func (r *testRepository) BatchCreatePost(ctx context.Context, posts []*post) ([]*post, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	posts, err = batchCreatePost(ctx, r.Dialect(), tx, posts)
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+
+	return posts, nil
+}
+
+func updatePost(ctx context.Context, dialect string, execer domain.Execer, p *post, updateMask ...string) (*post, error) {
+	var err error
+	updater := sql.Updater(dialect, execer, &post{}, entsql.EQ("id", p.Id))
+	_, err = updater.Update(ctx, p, updateMask...)
+	if err != nil {
+		return p, err
+	}
+
+	p, err = mutatePostRelations(ctx, dialect, execer, p, entsql.ConflictColumns("id"), entsql.ResolveWithNewValues())
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (r *testRepository) UpdatePost(ctx context.Context, p *post, updateMask ...string) (*post, error) {
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	p, err = updatePost(ctx, r.Dialect(), tx, p, updateMask...)
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+
+	return p, nil
+}
+
+func batchUpdatePost(ctx context.Context, dialect string, execer domain.Execer, posts []*post, updateMask ...string) ([]*post, error) {
+	var err error
+
+	for _, p := range posts {
+		updater := sql.Updater(dialect, execer, &post{}, entsql.EQ("id", p.Id))
+		_, err = updater.Update(ctx, p, updateMask...)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+	posts, err = batchMutatePostRelations(ctx, dialect, execer, posts, entsql.ConflictColumns("id"), entsql.ResolveWithNewValues())
+	if err != nil {
+		return nil, err
+	}
+
+	return posts, nil
+}
+
+func (r *testRepository) BatchUpdatePost(ctx context.Context, posts []*post, updateMask ...string) ([]*post, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	posts, err = batchUpdatePost(ctx, r.Dialect(), tx, posts, updateMask...)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+
+	return posts, nil
+}
+
+func deletePost(ctx context.Context, dialect string, execer domain.Execer, id int64) error {
+	var err error
+	deleter := sql.Deleter(dialect, execer, &post{}, entsql.EQ("id", id))
+	_, err = deleter.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+	err = sql.DeleteManyToManyRelation(ctx, dialect, execer, joinTable, entsql.EQ(joinTable.Field, id))
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+func (r *testRepository) DeletePost(ctx context.Context, id int64) error {
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err = deletePost(ctx, r.Dialect(), tx, id)
+	if err != nil {
+		return err
+	}
+	tx.Commit()
+	return nil
+}
+
+func batchDeletePost(ctx context.Context, dialect string, execer domain.Execer, ids []int64) error {
+	var err error
+	v := make([]any, len(ids))
+	for i, id := range ids {
+		v[i] = id
+	}
+	deleter := sql.Deleter(dialect, execer, &post{}, entsql.In("id", v...))
+	_, err = deleter.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	values := make([]any, len(ids))
+	for i, id := range ids {
+		values[i] = id
+	}
+	joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+	err = sql.DeleteManyToManyRelation(ctx, dialect, execer, joinTable, entsql.In(joinTable.Field, values...))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *testRepository) BatchDeletePost(ctx context.Context, ids []int64) error {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err = batchDeletePost(ctx, r.Dialect(), tx, ids)
+	if err != nil {
+		return err
+	}
+
+	tx.Commit()
+
+	return nil
+}
+
+type postOpIdInput struct {
+	Eq *int64  `json:"eq,omitempty"`
+	In []int64 `json:"in,omitempty"`
+}
+
+type postOpTitleInput struct {
+	Eq         *string `json:"eq,omitempty"`
+	Contains   *string `json:"contains,omitempty"`
+	StartsWith *string `json:"starts_with,omitempty"`
+	EndsWith   *string `json:"ends_with,omitempty"`
+}
+
+type postFilterInput struct {
+	NOT   *postFilterInput   `json:"NOT,omitempty"`
+	AND   []*postFilterInput `json:"AND,omitempty"`
+	OR    []*postFilterInput `json:"OR,omitempty"`
+	Id    *postOpIdInput     `json:"id,omitempty"`
+	Title *postOpTitleInput  `json:"title,omitempty"`
+}
+
+func applyPostFilter(ctx context.Context, filterInput *postFilterInput) *entsql.Predicate {
+	var preds []*entsql.Predicate
+	if filterInput.NOT != nil {
+		pred := applyPostFilter(ctx, filterInput.NOT)
+		preds = append(preds, entsql.Not(pred))
+	}
+
+	if filterInput.OR != nil {
+		switch n := len(filterInput.OR); {
+		case n == 1:
+			pred := applyPostFilter(ctx, filterInput.OR[0])
+			preds = append(preds, pred)
+		case n > 1:
+			ors := make([]*entsql.Predicate, 0, n)
+			for _, or := range filterInput.OR {
+				pred := applyPostFilter(ctx, or)
+				ors = append(ors, pred)
+			}
+			preds = append(preds, entsql.Or(ors...))
+
+		}
+	}
+	if filterInput.AND != nil {
+		switch n := len(filterInput.OR); {
+		case n == 1:
+			pred := applyPostFilter(ctx, filterInput.AND[0])
+			preds = append(preds, pred)
+		case n > 1:
+			ands := make([]*entsql.Predicate, 0, n)
+			for _, and := range filterInput.AND {
+				pred := applyPostFilter(ctx, and)
+				ands = append(ands, pred)
+			}
+			preds = append(preds, entsql.And(ands...))
+
+		}
+	}
+	idInput := filterInput.Id
+	if idInput != nil {
+		if idInput.Eq != nil {
+			preds = append(preds, entsql.EQ("id", *idInput.Eq))
+		}
+	}
+	titleInput := filterInput.Title
+	if titleInput != nil {
+		if titleInput.Eq != nil {
+			preds = append(preds, entsql.EQ("title", *titleInput.Eq))
+		}
+	}
+	switch len(preds) {
+	case 0:
+		return nil
+	case 1:
+		return preds[0]
+	default:
+		return entsql.And(preds...)
+	}
+}
+
+func applyPostParent(ctx context.Context, dialect string, querier domain.Querier, parent string, parentName string) (*entsql.Predicate, error) {
+	if len(parent) == 0 || len(parentName) == 0 {
+		return nil, nil
+	}
+
+	switch parent {
+	case "users":
+		return entsql.EQ("author_id", parentName), nil
+	case "categories":
+		postIds := make([]any, 0)
+		query, args := entsql.Dialect(dialect).Select("post_id").From(entsql.Table("post_category")).Where(entsql.EQ("category_id", parentName)).Query()
+		rows, err := querier.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var postId int64
+			err = rows.Scan(&postId)
+			if err != nil {
+				return nil, err
+			}
+
+			postIds = append(postIds, postId)
+		}
+		return entsql.In("id", postIds...), nil
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "Unsupported parent resource name: %s", parent)
+	}
+
+}
+
+func (r *testRepository) PostsAssignWithTags(ctx context.Context, id int64, tagIds []int64) error {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	values := make([][]any, 0)
+	for _, tagId := range tagIds {
+		values = append(values, []any{id, tagId})
+	}
+
+	if len(values) > 0 {
+		joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+		err = sql.AddManyToManyRelation(ctx, r.Dialect(), tx, joinTable, values)
+		if err != nil {
+			return err
+		}
+	}
+
+	tx.Commit()
+
+	return nil
+}
+
+func (r *testRepository) PostsUnassignWithTags(ctx context.Context, id int64, tagIds []int64) error {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	values := make([]any, 0)
+	for _, tagId := range tagIds {
+		values = append(values, tagId)
+	}
+
+	if len(values) > 0 {
+		joinTable := &domain.JoinTable{Name: "post_tag", Field: "post_id", RefField: "tag_id"}
+		err = sql.DeleteManyToManyRelation(ctx, r.Dialect(), tx, joinTable,
+			entsql.And(entsql.EQ(joinTable.Field, id), entsql.In(joinTable.RefField, values...)),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	tx.Commit()
+
+	return nil
+}
+
+func loadCommentRelations(ctx context.Context, dialect string, querier domain.Querier, comments ...*comment) ([]*comment, error) {
+	if len(comments) == 0 {
+		return nil, nil
+	}
+
+	// Load relongs to relationship
+	postIds := make([]any, 0, len(comments))
+	for _, c := range comments {
+		postIds = append(postIds, c.PostId)
+	}
+
+	query := sql.Query(dialect, querier, &post{})
+	posts, err := query.Find(ctx, entsql.In("id", postIds...))
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range comments {
+		for _, p := range posts {
+			if c.PostId == p.Id {
+				c.Post = p
+			}
+		}
+	}
+
+	return comments, nil
+}
+
+func createComment(ctx context.Context, dialect string, execer domain.Execer, c *comment) (*comment, error) {
+	creator := sql.Create(dialect, execer, &comment{})
+	c, err := creator.Save(ctx, c)
+
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func (r *testRepository) CreateComment(ctx context.Context, c *comment) (*comment, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	c, err = createComment(ctx, r.Dialect(), tx, c)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+	return c, nil
+}
+
+func batchCreateComment(ctx context.Context, dialect string, execer domain.Execer, comments []*comment, onConflict ...entsql.ConflictOption) ([]*comment, error) {
+	var err error
+	creator := sql.Create(dialect, execer, &comment{}, onConflict...)
+	comments, err = creator.BatchSave(ctx, comments)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert belongs to relationship
+	posts := make([]*post, 0)
+	for _, comment := range comments {
+		if comment.Post != nil {
+			posts = append(posts, comment.Post)
+		}
+
+		if len(posts) > 0 {
+			_, err = batchCreatePost(ctx, dialect, execer, posts)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return comments, nil
+}
+
+func (r *testRepository) BatchCreateComment(ctx context.Context, comments []*comment) ([]*comment, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	comments, err = batchCreateComment(ctx, r.Dialect(), tx, comments)
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+
+	return comments, nil
+}
+
+func createTag(ctx context.Context, dialect string, execer domain.Execer, t *tag) (*tag, error) {
+	creator := sql.Create(dialect, execer, &tag{})
+	t, err := creator.Save(ctx, t)
+
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (r *testRepository) CreateTag(ctx context.Context, t *tag) (*tag, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	t, err = createTag(ctx, r.Dialect(), tx, t)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+	return t, nil
+}
+
+func batchCreateTag(ctx context.Context, dialect string, execer domain.Execer, tags []*tag, onConflict ...entsql.ConflictOption) ([]*tag, error) {
+	var err error
+	creator := sql.Create(dialect, execer, &tag{}, onConflict...)
+	tags, err = creator.BatchSave(ctx, tags)
+
+	if err != nil {
+		return nil, err
+	}
+	return tags, nil
+}
+
+func (r *testRepository) BatchCreateTag(ctx context.Context, tags []*tag) ([]*tag, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	tags, err = batchCreateTag(ctx, r.Dialect(), tx, tags)
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+
+	return tags, nil
+}
+
+func createMeta(ctx context.Context, dialect string, execer domain.Execer, m *meta, onConflict ...entsql.ConflictOption) (*meta, error) {
+	creator := sql.Create(dialect, execer, &meta{}, onConflict...)
+	t, err := creator.Save(ctx, m)
+
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func batchCreateMeta(ctx context.Context, dialect string, execer domain.Execer, metaSlice []*meta, onConflict ...entsql.ConflictOption) ([]*meta, error) {
+	if len(metaSlice) == 0 {
+		return metaSlice, nil
+	}
+	var err error
+	creator := sql.Create(dialect, execer, &meta{}, onConflict...)
+	metaSlice, err = creator.BatchSave(ctx, metaSlice)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Insert belongs to relationship
+	posts := make([]*post, 0)
+	for _, meta := range metaSlice {
+		posts = append(posts, meta.Post)
+
+		if len(posts) > 0 {
+			_, err = batchCreatePost(ctx, dialect, execer, posts)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return metaSlice, nil
+}
+
+func createUser(ctx context.Context, dialect string, execer domain.Execer, m *user, onConflict ...entsql.ConflictOption) (*user, error) {
+	creator := sql.Create(dialect, execer, &user{}, onConflict...)
+	t, err := creator.Save(ctx, m)
+
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func batchCreateUser(ctx context.Context, dialect string, execer domain.Execer, users []*user, onConflict ...entsql.ConflictOption) ([]*user, error) {
+	var err error
+	creator := sql.Create(dialect, execer, &user{}, onConflict...)
+	users, err = creator.BatchSave(ctx, users)
+
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}

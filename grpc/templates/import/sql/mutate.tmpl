@@ -1,0 +1,139 @@
+{{ $table := . }}
+
+{{- if $table.HasRelations }}
+    func mutate{{ $table.Name | pascal }}Relations(ctx context.Context, dialect string, execer domain.Execer, {{ $table.Name | camel }} *domain.{{ $table.Name | pascal }}, onConflict ...entsql.ConflictOption) (*domain.{{ $table.Name | pascal }}, error) {
+        var err error
+
+        {{- range $f := .Fields}}
+            {{- if $f.RelBelongsTo }}
+                // Insert belongs to relationship
+                if {{ $table.Name | camel }}.{{ $f.Name | pascal }} != nil {
+                    _, err = create{{ $f.Rel.RefTable.Name | pascal }}(ctx, dialect, execer, {{ $table.Name | camel }}.{{ $f.Name | pascal }}, onConflict...)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelHasOne }}
+                // Insert has one relationship
+                if {{ $table.Name | camel }}.{{ $f.Name | pascal }} != nil {
+                    _, err = create{{ $f.Rel.RefTable.Name | pascal }}(ctx, dialect, execer, {{ $table.Name | camel }}.{{ $f.Name | pascal }}, onConflict...)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelHasMany }}
+                // Insert has many relationship
+                if len({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}) > 0 {
+                    for _, c := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
+                        c.{{ $f.Rel.RefField.Name | pascal }} = {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}
+                    }
+                    _, err = batchCreate{{ $f.Rel.RefTable.Name | pascal | plural }}(ctx, dialect, execer, {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}, onConflict...)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelManyToMany }}
+                // Insert many to many relationship
+                if len({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}) > 0 {
+                    values := make([][]any, 0)
+                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
+                        values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }} })
+                    }
+                    joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+                    err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+        {{- end}}
+
+        return {{ $table.Name | camel }}, nil
+    }
+
+    func batchMutate{{ $table.Name | pascal }}Relations(ctx context.Context, dialect string, execer domain.Execer, {{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}, onConflict ...entsql.ConflictOption) ([]*domain.{{ $table.Name | pascal }}, error) {
+        var err error
+
+        {{- range $f := .Fields}}
+            {{- if $f.RelBelongsTo }}
+                // Insert belongs to relationship
+                {{ $f.Name | pascal | plural }} := make([]*domain.{{ $f.Rel.RefTable.Name | pascal }}, 0)
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    if {{ $table.Name | camel }}.{{ $f.Name | pascal }} != nil {
+                        {{ $f.Name | pascal | plural }} = append({{ $f.Name | pascal | plural }}, {{ $table.Name | camel }}.{{ $f.Name | pascal }})
+                    }
+
+                }
+                if len({{ $f.Name | pascal | plural }}) > 0 {
+                    _, err = batchCreate{{ $f.Rel.RefTable.Name | pascal | plural }}(ctx, dialect, execer, {{ $f.Name | pascal | plural }}, onConflict...)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelHasOne }}
+                // Insert has one relationship
+                {{ $f.Name | pascal | plural }} := make([]*domain.{{ $f.Rel.RefTable.Name | pascal }}, 0)
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    if {{ $table.Name | camel }}.{{ $f.Name | pascal }} != nil {
+                        {{ $table.Name | camel }}.{{ $f.Name | pascal }}.{{ $f.Rel.RefField.Name | pascal }} = {{ $table.Name | pascal }}.Id
+                        {{ $f.Name | pascal | plural }} = append({{ $f.Name | pascal | plural }}, {{ $table.Name | camel }}.{{ $f.Name | pascal }})
+                    }
+
+                }
+                if len({{ $f.Name | pascal | plural }}) > 0 {
+                    _, err = batchCreate{{ $f.Rel.RefTable.Name | pascal | plural }}(ctx, dialect, execer, {{ $f.Name | pascal | plural }}, onConflict...)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelHasMany }}
+                // Insert has many relationship
+                {{ $f.Name | camel | plural }} := make([]*domain.{{ $f.Rel.RefTable.Name | pascal }}, 0)
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
+                        if {{ $f.Rel.RefTable.Name | camel }} != nil {
+                            {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} = {{ $table.Name | camel }}.Id
+                            {{ $f.Name | camel | plural }} = append({{ $f.Name | camel | plural }}, {{ $f.Rel.RefTable.Name | camel }})
+                        }
+                    }
+                }
+                if len({{ $f.Name | camel | plural }}) > 0 {
+                    _, err = batchCreate{{ $f.Rel.RefTable.Name | pascal | plural }}(ctx, dialect, execer, {{ $f.Name | camel | plural }}, onConflict...)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelManyToMany }}
+                // Insert many to many relationship
+                values := make([][]any, 0)
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}  {
+                        values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }},{{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }}})
+                    }
+                }
+
+                if len(values) > 0 {
+                    joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+                    err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+                    if err != nil {
+                        return nil, err
+                    }
+                }
+            {{- end}}
+        {{- end}}
+
+        return {{ $table.Name | camel | plural }}, nil
+    }
+{{- end}}

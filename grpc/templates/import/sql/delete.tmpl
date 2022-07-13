@@ -1,0 +1,95 @@
+{{ $table := . }}
+
+func delete{{ $table.Name | pascal }}(ctx context.Context, dialect string, execer domain.Execer, {{ $table.ID.Name | camel }} {{ $table.ID.Type.Kind }}) error {
+	var err error
+	deleter := Deleter(dialect, execer, &domain.{{ $table.Name | pascal }}{}, entsql.EQ("{{ $table.ID.Name }}", {{ $table.ID.Name | camel }}))
+	_, err = deleter.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+    {{- range $f := .Fields}}
+        {{- if $f.RelManyToMany }}
+			joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+			err = DeleteManyToManyRelation(ctx, dialect, execer, joinTable, entsql.EQ(joinTable.Field, id))
+			if err != nil {
+				return err
+			}
+        {{- end}}
+    {{- end}}
+
+	return err
+}
+
+func (r *sqlRepository) Delete{{ $table.Name | pascal }}(ctx context.Context, {{ $table.ID.Name | camel }} {{ $table.ID.Type.Kind }}) error {
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err = delete{{ $table.Name | pascal }}(ctx, r.Dialect(), tx, {{ $table.ID.Name | camel }})
+	if err != nil {
+		return err
+	}
+	tx.Commit()
+	return nil
+}
+
+func batchDelete{{ $table.Name | pascal }}(ctx context.Context, dialect string, execer domain.Execer, {{ $table.ID.Name | camel | plural }} []{{ $table.ID.Type.Kind }}) error {
+	var err error
+	v := make([]any, len({{ $table.ID.Name | camel | plural }}))
+	for i, {{ $table.ID.Name | camel }} := range {{ $table.ID.Name | camel | plural }} {
+		v[i] = {{ $table.ID.Name | camel }}
+	}
+	deleter := Deleter(dialect, execer, &domain.{{ $table.Name | pascal }}{}, entsql.In("{{ $table.ID.Name }}", v...))
+	_, err = deleter.Delete(ctx)
+	if err != nil {
+		return err
+	}
+
+	values := make([]any, len({{ $table.ID.Name | camel | plural }}))
+	for i, {{ $table.ID.Name | camel }} := range {{ $table.ID.Name | camel | plural }} {
+		values[i] = {{ $table.ID.Name | camel }}
+	}
+
+	{{- range $f := .Fields}}
+        {{- if $f.RelManyToMany }}
+			joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+			err = DeleteManyToManyRelation(ctx, dialect, execer, joinTable, entsql.In(joinTable.Field, values...))
+			if err != nil {
+				return err
+			}
+        {{- end}}
+    {{- end}}
+
+	return nil
+}
+
+func (r *sqlRepository) BatchDelete{{ $table.Name | pascal | plural }}(ctx context.Context, {{ $table.ID.Name | camel | plural }} []{{ $table.ID.Type.Kind }}) error {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err = batchDelete{{ $table.Name | pascal }}(ctx, r.Dialect(), tx, {{ $table.ID.Name | camel | plural }})
+	if err != nil {
+		return err
+	}
+
+	tx.Commit()
+
+	return nil
+}

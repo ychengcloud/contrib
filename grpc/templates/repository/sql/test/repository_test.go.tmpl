@@ -1,0 +1,1181 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package test
+
+import (
+	"context"
+	"database/sql/driver"
+	"fmt"
+	"log"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+
+	"{{ .Package }}/domain"
+	"{{ .Package }}/repository/sql"
+)
+
+func escape(query string) string {
+	rows := strings.Split(query, "\n")
+	for i := range rows {
+		rows[i] = strings.TrimPrefix(rows[i], " ")
+	}
+	query = strings.Join(rows, " ")
+	return strings.TrimSpace(regexp.QuoteMeta(query)) + "$"
+}
+
+type fields struct {
+	fields []string
+	values []any
+}
+
+func newFields(f []string, v []any) fields {
+	return fields{
+		fields: f,
+		values: v,
+	}
+}
+
+func newSqlmockRows(data ...fields) *sqlmock.Rows {
+	if len(data) == 0 {
+		return nil
+	}
+	rows := sqlmock.NewRows(data[0].fields)
+
+	for i := range data {
+		values := make([]driver.Value, len(data[i].values))
+		for j := range data[i].values {
+			values[j] = data[i].values[j]
+		}
+
+		rows.AddRow(values...)
+	}
+	return rows
+}
+
+func TestLoadRelations(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+	tests := []struct {
+		name      string
+		ids       []int64
+		models    []*post
+		withEdges bool
+		before    func(sqlmock.Sqlmock, []*post)
+		wantErr   bool
+	}{
+		{
+			name: "load relationship",
+			ids:  []int64{1, 2},
+			models: []*post{
+				{
+					node: node{Id: 1}, AuthorId: 1, Title: "postname",
+					Comments: []*comment{
+						{Id: 1, PostId: 1, Content: "comment1"},
+						{Id: 2, PostId: 1, Content: "comment2"},
+					},
+					Meta: &meta{
+						PostId: 1, Content: "meta",
+					},
+					Tags: []*tag{
+						{Id: 1, Title: "tag1"},
+						{Id: 2, Title: "tag2"},
+					},
+				},
+				{
+					node: node{Id: 2}, AuthorId: 1, Title: "postname2",
+					Comments: []*comment{
+						{Id: 3, PostId: 2, Content: "comment3"},
+					},
+					Meta: &meta{
+						PostId: 2, Content: "meta",
+					},
+					Tags: []*tag{
+						{Id: 1, Title: "tag1"},
+						{Id: 3, Title: "tag3"},
+					},
+				},
+			},
+			withEdges: true,
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				query := fmt.Sprintf("SELECT * FROM `meta` WHERE `post_id` IN (?, ?)")
+				mock.ExpectQuery(escape(query)).WithArgs(1, 2).WillReturnRows(
+					newSqlmockRows(
+						newFields(models[0].Meta.Fields()),
+						newFields(models[0].Meta.Fields()),
+						newFields(models[1].Meta.Fields()),
+					))
+
+				query = fmt.Sprintf("SELECT * FROM `comment` WHERE `post_id` IN (?, ?)")
+				mock.ExpectQuery(escape(query)).WithArgs(1, 2).WillReturnRows(
+					newSqlmockRows(
+						newFields(models[0].Comments[0].Fields()),
+						newFields(models[0].Comments[1].Fields()),
+						newFields(models[1].Comments[0].Fields()),
+					))
+
+				query = fmt.Sprintf("SELECT `post_id`, `tag_id` FROM `post_tag` WHERE `post_id` IN (?, ?)")
+				mock.ExpectQuery(escape(query)).WithArgs(1, 2).WillReturnRows(sqlmock.NewRows([]string{"post_id", "tag_id"}).
+					AddRow(models[0].Id, models[0].Tags[0].Id).
+					AddRow(models[0].Id, models[0].Tags[1].Id).
+					AddRow(models[1].Id, models[1].Tags[0].Id).
+					AddRow(models[1].Id, models[1].Tags[1].Id))
+
+				query = fmt.Sprintf("SELECT * FROM `tag` WHERE `id` IN (?, ?, ?, ?)")
+				mock.ExpectQuery(escape(query)).WithArgs(
+					models[0].Tags[0].Id,
+					models[0].Tags[1].Id,
+					models[1].Tags[0].Id,
+					models[1].Tags[1].Id,
+				).WillReturnRows(
+					newSqlmockRows(
+						newFields(models[0].Tags[0].Fields()),
+						newFields(models[0].Tags[1].Fields()),
+						newFields(models[1].Tags[0].Fields()),
+						newFields(models[1].Tags[1].Fields()),
+					))
+			},
+		},
+		{
+			name: "load empty many to many relationship",
+			models: []*post{
+				{
+					node: node{Id: 1}, AuthorId: 1, Title: "postname",
+					Tags: []*tag{
+					},
+				},
+			},
+			withEdges: true,
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				query := fmt.Sprintf("SELECT * FROM `meta` WHERE `post_id` IN (?)")
+				meta := &meta{}
+				mock.ExpectQuery(escape(query)).WithArgs(1).WillReturnRows(
+					newSqlmockRows(
+						newFields(meta.Fields()),
+					))
+
+				query = fmt.Sprintf("SELECT * FROM `comment` WHERE `post_id` IN (?)")
+				comment := &comment{}
+				mock.ExpectQuery(escape(query)).WithArgs(1).WillReturnRows(
+					newSqlmockRows(
+					newFields(comment.Fields()),
+				))
+
+				query = fmt.Sprintf("SELECT `post_id`, `tag_id` FROM `post_tag` WHERE `post_id` IN (?)")
+				mock.ExpectQuery(escape(query)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"post_id", "tag_id"}))
+
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.models)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			posts, err := loadPostRelations(ctx, repo.Dialect(), repo.DB(), test.models...)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+			r.EqualValues(test.models, posts)
+
+		})
+	}
+}
+
+func TestList(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+	tests := []struct {
+		name       string
+		models     []*post
+		parent     string
+		parentName string
+		filter     func() *postFilterInput
+		orderBy    string
+		pageSize   int32
+		pageToken  string
+		withEdges  bool
+		before     func(sqlmock.Sqlmock, []*post)
+		wantErr    bool
+	}{
+		{
+			name:       "list with filter",
+			parent:     "",
+			parentName: "",
+			filter: func() *postFilterInput {
+				id := int64(1)
+				return &postFilterInput{
+					Id: &postOpIdInput{
+						Eq: &id,
+					},
+				}
+			},
+			models: []*post{
+				{
+					node: node{Id: 1}, AuthorId: 1, Title: "postname",
+				},
+				{
+					node: node{Id: 2}, AuthorId: 1, Title: "postname",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				query := fmt.Sprintf("SELECT * FROM `post` WHERE `id` = ? LIMIT %d", sql.MaxLimit+1)
+				mock.ExpectQuery(escape(query)).WithArgs(models[0].Id).WillReturnRows(newSqlmockRows(newFields(models[0].Fields()), newFields(models[1].Fields())))
+			},
+		},
+		{
+			name:       "list with parent",
+			parent:     "categories",
+			parentName: "1",
+			filter:     func() *postFilterInput { return nil },
+			models: []*post{
+				{
+					node: node{Id: 1}, AuthorId: 1, Title: "postname",
+				},
+				{
+					node: node{Id: 2}, AuthorId: 1, Title: "postname",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				query := fmt.Sprintf("SELECT `post_id` FROM `post_category` WHERE `category_id` = ?")
+				mock.ExpectQuery(escape(query)).WithArgs("1").WillReturnRows(sqlmock.NewRows([]string{"post_id"}).AddRow(1).AddRow(2))
+
+				query = fmt.Sprintf("SELECT * FROM `post` WHERE `id` IN (?, ?) LIMIT %d", sql.MaxLimit+1)
+				mock.ExpectQuery(escape(query)).WithArgs(1, 2).WillReturnRows(newSqlmockRows(newFields(models[0].Fields()), newFields(models[1].Fields())))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.models)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			posts, _, err := repo.ListPosts(ctx, test.parent, test.parentName, test.filter(), test.orderBy, test.pageSize, test.pageToken, test.withEdges)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+			r.EqualValues(test.models, posts)
+
+		})
+	}
+}
+
+func TestGetById(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+	tests := []struct {
+		name      string
+		id        int64
+		model     *post
+		withEdges bool
+		before    func(sqlmock.Sqlmock, *post)
+		wantErr   bool
+	}{
+		{
+			name: "get by id",
+			id:   1,
+			model: &post{
+				node: node{Id: 1}, AuthorId: 1, Title: "postname",
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				query := fmt.Sprintf("SELECT * FROM `post` WHERE `id` = ?")
+				mock.ExpectQuery(escape(query)).WithArgs(model.Id).WillReturnRows(newSqlmockRows(newFields(model.Fields())))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.model)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			post, err := repo.GetPostById(ctx, test.model.Id, test.withEdges)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+			r.EqualValues(test.model, post)
+
+		})
+	}
+}
+
+func TestBatchGetById(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+	tests := []struct {
+		name      string
+		ids       []int64
+		models    []*post
+		withEdges bool
+		before    func(sqlmock.Sqlmock, []*post)
+		wantErr   bool
+	}{
+		{
+			name: "batch get by id",
+			ids:  []int64{1, 2},
+			models: []*post{
+				{
+					node: node{Id: 1}, AuthorId: 1, Title: "postname",
+				},
+				{
+					node: node{Id: 2}, AuthorId: 1, Title: "postname",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				query := fmt.Sprintf("SELECT * FROM `post` WHERE `id` IN (?, ?)")
+				mock.ExpectQuery(escape(query)).WithArgs(models[0].Id, models[1].Id).WillReturnRows(newSqlmockRows(newFields(models[0].Fields()), newFields(models[1].Fields())))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.models)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			posts, err := repo.BatchGetPostById(ctx, []int64{test.models[0].Id, test.models[1].Id}, test.withEdges)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+			r.EqualValues(test.models, posts)
+
+		})
+	}
+}
+
+func TestCreate(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		model   *post
+		before  func(sqlmock.Sqlmock, *post)
+		after   func(r *require.Assertions, expected *post, actual *post)
+		wantErr bool
+	}{
+		{
+			name: "create",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, model)
+
+				mock.ExpectCommit()
+			},
+			after: func(r *require.Assertions, expected *post, actual *post) {
+				r.Equal(expected.Id, actual.Id)
+				r.Equal(expected.AuthorId, actual.AuthorId)
+				r.Equal(expected.Title, actual.Title)
+			},
+		},
+		{
+			name: "create with belongs to relationship",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+				User: &user{
+					FirstName: "FirstName1",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, model)
+
+				matchCreateUser(mock, false, model.User)
+				mock.ExpectCommit()
+			},
+			after: func(r *require.Assertions, expected *post, actual *post) {
+				r.Equal(expected.Meta, actual.Meta)
+			},
+		},
+		{
+			name: "create with has one relationship",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+				Meta: &meta{
+					Id: uuid.MustParse("54cb7f98-aec1-4c8f-ba18-54fcba9f5d7d"), PostId: 1, Key: "key",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, model)
+
+				matchCreateMeta(mock, false, model.Meta)
+				mock.ExpectCommit()
+			},
+			after: func(r *require.Assertions, expected *post, actual *post) {
+				r.Equal(expected.Meta, actual.Meta)
+			},
+		},
+		{
+			name: "create with has many relationship",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+				Comments: []*comment{
+					{
+						PostId: 1, Title: "testtitle",
+					},
+					{
+						PostId: 1, Title: "testtitle2",
+					},
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, model)
+
+				matchCreateComment(mock, false, model.Comments...)
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "create with many to many relationship",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+				Tags: []*tag{
+					{
+						Id: 1, Title: "testtitle",
+					},
+					{
+						Id: 2, Title: "testtitle2",
+					},
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				lastId := int64(1)
+				mock.ExpectBegin()
+				matchCreatePost(mock, model)
+
+				query := fmt.Sprintf("INSERT INTO `post_tag` (`post_id`, `tag_id`) VALUES (?, ?), (?, ?) ON DUPLICATE KEY UPDATE `post_id` = `post_tag`.`post_id`, `tag_id` = `post_tag`.`tag_id`")
+				mock.ExpectExec(escape(query)).WithArgs(
+					lastId, model.Tags[0].Id, lastId, model.Tags[1].Id,
+				).WillReturnResult(sqlmock.NewResult(1, 2))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.model)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			result, err := repo.CreatePost(ctx, test.model)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+			r.Equal(int64(1), result.Id)
+
+			if test.after != nil {
+				test.after(r, test.model, result)
+			}
+
+		})
+	}
+}
+
+func matchCreatePost(mock sqlmock.Sqlmock, posts ...*post) {
+	placeholder := make([]string, len(posts))
+	args := make([]driver.Value, 0)
+	for i := range posts {
+		placeholder[i] = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+		args = append(args, posts[i].AuthorId, posts[i].Title, posts[i].MetaTitle, posts[i].Slug, posts[i].Summary, posts[i].Published, posts[i].CreatedAt, posts[i].UpdatedAt, posts[i].PublishedAt, posts[i].Content)
+	}
+	query := fmt.Sprintf("INSERT INTO `post` (`author_id`, `title`, `meta_title`, `slug`, `summary`, `published`, `created_at`, `updated_at`, `published_at`, `content`) VALUES %s", strings.Join(placeholder, ", "))
+	mock.ExpectExec(escape(query)).WithArgs(args...).WillReturnResult(sqlmock.NewResult(1, int64(len(posts))))
+
+}
+
+func matchCreateComment(mock sqlmock.Sqlmock, conflict bool, comments ...*comment) {
+	var (
+		onConflict = "ON DUPLICATE KEY UPDATE `post_id` = VALUES(`post_id`), `parent_id` = VALUES(`parent_id`), `title` = VALUES(`title`), `published` = VALUES(`published`), `created_at` = VALUES(`created_at`), `published_at` = VALUES(`published_at`), `content` = VALUES(`content`)"
+	)
+
+	placeholder := make([]string, len(comments))
+	args := make([]driver.Value, 0)
+	for i := range comments {
+		placeholder[i] = "(?, ?, ?, ?, ?, ?, ?)"
+		args = append(args, comments[i].PostId, comments[i].ParentId, comments[i].Title, comments[i].Published, comments[i].CreatedAt, comments[i].PublishedAt, comments[i].Content)
+	}
+	query := fmt.Sprintf("INSERT INTO `comment` (`post_id`, `parent_id`, `title`, `published`, `created_at`, `published_at`, `content`) VALUES %s", strings.Join(placeholder, ", "))
+	if conflict {
+		query = query + " " + onConflict
+	}
+	mock.ExpectExec(escape(query)).WithArgs(args...).WillReturnResult(sqlmock.NewResult(1, int64(len(comments))))
+
+}
+
+func matchCreateMeta(mock sqlmock.Sqlmock, conflict bool, metaSlice ...*meta) {
+	var (
+		onConflict = "ON DUPLICATE KEY UPDATE `id` = VALUES(`id`), `post_id` = VALUES(`post_id`), `key` = VALUES(`key`), `content` = VALUES(`content`)"
+	)
+
+	placeholder := make([]string, len(metaSlice))
+	args := make([]driver.Value, 0)
+	for i := range metaSlice {
+		placeholder[i] = "(?, ?, ?, ?)"
+		args = append(args, metaSlice[i].Id, metaSlice[i].PostId, metaSlice[i].Key, metaSlice[i].Content)
+	}
+	query := fmt.Sprintf("INSERT INTO `meta` (`id`, `post_id`, `key`, `content`) VALUES %s", strings.Join(placeholder, ", "))
+	if conflict {
+		query = query + " " + onConflict
+	}
+	mock.ExpectExec(escape(query)).WithArgs(args...).WillReturnResult(sqlmock.NewResult(1, int64(len(metaSlice))))
+
+}
+
+func matchCreateUser(mock sqlmock.Sqlmock, conflict bool, users ...*user) {
+	var (
+		onConflict = "ON DUPLICATE KEY UPDATE `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`)"
+	)
+
+	placeholder := make([]string, len(users))
+	args := make([]driver.Value, 0)
+	for i := range users {
+		placeholder[i] = "(?, ?)"
+		args = append(args, users[i].FirstName, users[i].LastName)
+	}
+	query := fmt.Sprintf("INSERT INTO `user` (`first_name`, `last_name`) VALUES %s", strings.Join(placeholder, ", "))
+	if conflict {
+		query = query + " " + onConflict
+	}
+	mock.ExpectExec(escape(query)).WithArgs(args...).WillReturnResult(sqlmock.NewResult(1, int64(len(users))))
+
+}
+
+func TestBatchCreate(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		models  []*post
+		before  func(sqlmock.Sqlmock, []*post)
+		wantErr bool
+	}{
+		{
+			name: "batch create",
+			models: []*post{
+				{
+					AuthorId: 1, Title: "title",
+				},
+				{
+					AuthorId: 1, Title: "title2",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, models...)
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "batch create with belongs to relationship",
+			models: []*post{
+				{
+					AuthorId: 1, Title: "title",
+					User: &user{
+						FirstName: "FirstName1",
+					},
+				},
+				{
+					AuthorId: 1, Title: "title2",
+					User: &user{
+						FirstName: "FirstName2",
+					},
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, models...)
+
+				matchCreateUser(mock, false, models[0].User, models[1].User)
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "batch create with has many relationship",
+			models: []*post{
+				{
+					AuthorId: 1, Title: "title",
+					Comments: []*comment{
+						{
+							PostId: 1, Title: "title",
+						},
+						{
+							PostId: 1, Title: "title2",
+						},
+					},
+				},
+				{
+					AuthorId: 1, Title: "title2",
+					Comments: []*comment{
+						{
+							PostId: 2, Title: "title",
+						},
+					},
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				mock.ExpectBegin()
+				matchCreatePost(mock, models...)
+
+				comments := append(models[0].Comments, models[1].Comments...)
+				matchCreateComment(mock, false, comments...)
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "batch create with many to many relationship",
+			models: []*post{
+				{
+					AuthorId: 1, Title: "title",
+					Tags: []*tag{
+						{
+							Id: 1, Title: "testtitle",
+						},
+						{
+							Id: 2, Title: "testtitle2",
+						},
+					},
+				},
+				{
+					AuthorId: 1, Title: "title2",
+					Tags: []*tag{
+						{
+							Id: 1, Title: "testtitle",
+						},
+					},
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				lastId := int64(1)
+				lastId2 := int64(2)
+				mock.ExpectBegin()
+				matchCreatePost(mock, models...)
+
+				query := fmt.Sprintf("INSERT INTO `post_tag` (`post_id`, `tag_id`) VALUES (?, ?), (?, ?), (?, ?) ON DUPLICATE KEY UPDATE `post_id` = `post_tag`.`post_id`, `tag_id` = `post_tag`.`tag_id`")
+				mock.ExpectExec(escape(query)).WithArgs(
+					lastId, models[0].Tags[0].Id, lastId, models[0].Tags[1].Id, lastId2, models[1].Tags[0].Id,
+				).WillReturnResult(sqlmock.NewResult(1, 3))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.models)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			posts, err := repo.BatchCreatePost(ctx, test.models)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+			r.Equal(2, len(posts))
+			r.Equal(int64(1), posts[0].Id)
+			r.Equal(int64(2), posts[1].Id)
+
+			if len(posts[0].Comments) > 0 {
+				r.Equal(2, len(posts[0].Comments))
+				r.Equal(int64(1), posts[0].Comments[0].Id)
+				r.Equal(int64(2), posts[0].Comments[1].Id)
+				r.Equal(posts[0].Id, posts[0].Comments[0].PostId)
+				r.Equal(posts[0].Id, posts[0].Comments[1].PostId)
+			}
+
+		})
+	}
+}
+
+func matchUpdatePost(mock sqlmock.Sqlmock, posts ...*post) {
+	for _, p := range posts {
+		query := fmt.Sprintf("UPDATE `post` SET `author_id` = ?, `title` = ?, `meta_title` = ?, `slug` = ?, `summary` = ?, `published` = ?, `created_at` = ?, `updated_at` = ?, `published_at` = ?, `content` = ? WHERE `id` = ?")
+		mock.ExpectExec(escape(query)).WithArgs(p.AuthorId, p.Title, p.MetaTitle, p.Slug, p.Summary, p.Published, p.CreatedAt, p.UpdatedAt, p.PublishedAt, p.Content, p.Id).WillReturnResult(sqlmock.NewResult(1, 1))
+	}
+}
+func TestUpdate(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		model   *post
+		before  func(sqlmock.Sqlmock, *post)
+		after   func(r *require.Assertions, expected *post, actual *post)
+		wantErr bool
+	}{
+		{
+			name:  "update",
+			model: &post{node: node{Id: 1}, AuthorId: 1, Title: "title"},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, model)
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "update with belongs to relationship",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+				User: &user{
+					FirstName: "FirstName1",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, model)
+
+				matchCreateUser(mock, true, model.User)
+				mock.ExpectCommit()
+			},
+			after: func(r *require.Assertions, expected *post, actual *post) {
+				r.Equal(expected.Meta, actual.Meta)
+			},
+		},
+		{
+			name: "update with has one relationship",
+			model: &post{
+				AuthorId: 1, Title: "testtitle",
+				Meta: &meta{
+					Id: uuid.MustParse("54cb7f98-aec1-4c8f-ba18-54fcba9f5d7d"), PostId: 1, Key: "key",
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, model)
+
+				matchCreateMeta(mock, true, model.Meta)
+				mock.ExpectCommit()
+			},
+			after: func(r *require.Assertions, expected *post, actual *post) {
+				r.Equal(expected.Meta, actual.Meta)
+			},
+		},
+		{
+			name: "update with has many relationship",
+			model: &post{
+				node: node{Id: 1}, AuthorId: 1, Title: "title", Comments: []*comment{
+					{Id: 1, PostId: 1, ParentId: 1, Title: "title", Published: true, Content: "content"},
+					{Id: 2, PostId: 1, ParentId: 1, Title: "title", Published: true, Content: "content"},
+				}},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, model)
+
+				matchCreateComment(mock, true, model.Comments...)
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "update with many to many relationship",
+			model: &post{
+				node: node{Id: 1}, AuthorId: 1, Title: "testtitle",
+				Tags: []*tag{
+					{
+						Id: 1, Title: "testtitle",
+					},
+					{
+						Id: 2, Title: "testtitle2",
+					},
+				},
+			},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				lastId := int64(1)
+				mock.ExpectBegin()
+				matchUpdatePost(mock, model)
+
+				query := fmt.Sprintf("INSERT INTO `post_tag` (`post_id`, `tag_id`) VALUES (?, ?), (?, ?) ON DUPLICATE KEY UPDATE `post_id` = `post_tag`.`post_id`, `tag_id` = `post_tag`.`tag_id`")
+				mock.ExpectExec(escape(query)).WithArgs(
+					lastId, model.Tags[0].Id, lastId, model.Tags[1].Id,
+				).WillReturnResult(sqlmock.NewResult(1, 2))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.model)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			p, err := repo.UpdatePost(ctx, test.model)
+			r.NoError(err)
+			r.NotNil(p)
+			r.NoError(mock.ExpectationsWereMet())
+
+		})
+	}
+}
+
+func TestBatchUpdate(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		models  []*post
+		before  func(sqlmock.Sqlmock, []*post)
+		wantErr bool
+	}{
+		{
+			name: "batch update",
+			models: []*post{
+				{node: node{Id: 1}, AuthorId: 1, Title: "title"},
+				{node: node{Id: 2}, AuthorId: 2, Title: "title2"},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, models...)
+
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "batch update with has many relationship",
+			models: []*post{
+				{node: node{Id: 1}, AuthorId: 1, Title: "updatetitle", Comments: []*comment{
+					{Id: 1, PostId: 1, ParentId: 1, Title: "updatetitle", Published: true, Content: "content"},
+					{Id: 2, PostId: 1, ParentId: 1, Title: "updatetitle", Published: true, Content: "content"},
+				}},
+				{node: node{Id: 2}, AuthorId: 1, Title: "updatetitle", Comments: []*comment{
+					{Id: 3, PostId: 2, ParentId: 1, Title: "updatetitle", Published: true, Content: "content"},
+				}},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, models...)
+
+				comments := append(models[0].Comments, models[1].Comments...)
+				matchCreateComment(mock, true, comments...)
+
+				mock.ExpectCommit()
+			},
+		},
+		{
+			name: "batch update with many to many relationship",
+			models: []*post{
+				{node: node{Id: 1}, AuthorId: 1, Title: "updatetitle", Tags: []*tag{
+					{
+						Id: 1, Title: "testtitle",
+					},
+					{
+						Id: 2, Title: "testtitle2",
+					},
+				}},
+				{node: node{Id: 2}, AuthorId: 1, Title: "updatetitle", Tags: []*tag{
+					{
+						Id: 3, Title: "testtitle",
+					},
+				}},
+			},
+			before: func(mock sqlmock.Sqlmock, models []*post) {
+				mock.ExpectBegin()
+				matchUpdatePost(mock, models...)
+
+				query := fmt.Sprintf("INSERT INTO `post_tag` (`post_id`, `tag_id`) VALUES (?, ?), (?, ?), (?, ?) ON DUPLICATE KEY UPDATE `post_id` = `post_tag`.`post_id`, `tag_id` = `post_tag`.`tag_id`")
+				mock.ExpectExec(escape(query)).WithArgs(
+					models[0].Id, models[0].Tags[0].Id, models[0].Id, models[0].Tags[1].Id, models[1].Id, models[1].Tags[0].Id,
+				).WillReturnResult(sqlmock.NewResult(1, 3))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.models)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			_, err := repo.BatchUpdatePost(ctx, test.models)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+		})
+	}
+}
+
+func TestDelete(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		model   *post
+		before  func(sqlmock.Sqlmock, *post)
+		wantErr bool
+	}{
+		{
+			name:  "delete",
+			model: &post{node: node{Id: 1}},
+			before: func(mock sqlmock.Sqlmock, model *post) {
+				mock.ExpectBegin()
+				query := fmt.Sprintf("DELETE FROM `post` WHERE `id` = ?")
+				mock.ExpectExec(escape(query)).WithArgs(model.Id).WillReturnResult(sqlmock.NewResult(1, 1))
+				query = fmt.Sprintf("DELETE FROM `post_tag` WHERE `post_id` = ?")
+				mock.ExpectExec(escape(query)).WithArgs(model.Id).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.model)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			err := repo.DeletePost(ctx, test.model.Id)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+		})
+	}
+}
+
+func TestBatchDelete(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		ids     []int64
+		before  func(sqlmock.Sqlmock, []int64)
+		wantErr bool
+	}{
+		{
+			name: "batch delete",
+			ids:  []int64{1, 2},
+			before: func(mock sqlmock.Sqlmock, ids []int64) {
+				mock.ExpectBegin()
+				query := fmt.Sprintf("DELETE FROM `post` WHERE `id` IN (?, ?)")
+				mock.ExpectExec(escape(query)).WithArgs(ids[0], ids[1]).WillReturnResult(sqlmock.NewResult(1, 1))
+				query = fmt.Sprintf("DELETE FROM `post_tag` WHERE `post_id` IN (?, ?)")
+				mock.ExpectExec(escape(query)).WithArgs(ids[0], ids[1]).WillReturnResult(sqlmock.NewResult(1, 1))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.ids)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			err := repo.BatchDeletePost(ctx, test.ids)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+		})
+	}
+}
+
+func TestPostAssignWithTags(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		id      int64
+		tagIds  []int64
+		before  func(sqlmock.Sqlmock, int64, []int64)
+		wantErr bool
+	}{
+		{
+			name:   "assign",
+			id:     1,
+			tagIds: []int64{1, 2},
+			before: func(mock sqlmock.Sqlmock, id int64, tagIds []int64) {
+				mock.ExpectBegin()
+				query := fmt.Sprintf("INSERT INTO `post_tag` (`post_id`, `tag_id`) VALUES (?, ?), (?, ?) ON DUPLICATE KEY UPDATE `post_id` = `post_tag`.`post_id`, `tag_id` = `post_tag`.`tag_id`")
+				mock.ExpectExec(escape(query)).WithArgs(
+					id, tagIds[0], id, tagIds[1],
+				).WillReturnResult(sqlmock.NewResult(1, 2))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.id, test.tagIds)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			err := repo.PostsAssignWithTags(ctx, test.id, test.tagIds)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+		})
+	}
+}
+
+func TestPostUnassignWithTags(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+
+	tests := []struct {
+		name    string
+		id      int64
+		tagIds  []int64
+		before  func(sqlmock.Sqlmock, int64, []int64)
+		wantErr bool
+	}{
+		{
+			name:   "unassign",
+			id:     1,
+			tagIds: []int64{1, 2},
+			before: func(mock sqlmock.Sqlmock, id int64, tagIds []int64) {
+				mock.ExpectBegin()
+				query := fmt.Sprintf("DELETE FROM `post_tag` WHERE `post_id` = ? AND `tag_id` IN (?, ?)")
+				mock.ExpectExec(escape(query)).WithArgs(
+					id, tagIds[0], tagIds[1],
+				).WillReturnResult(sqlmock.NewResult(1, 2))
+				mock.ExpectCommit()
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.id, test.tagIds)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			err := repo.PostsUnassignWithTags(ctx, test.id, test.tagIds)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+		})
+	}
+}
+
+func TestLoadRelationsBelongsTo(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+	tests := []struct {
+		name      string
+		ids       []int64
+		models    []*comment
+		withEdges bool
+		before    func(sqlmock.Sqlmock, []*comment)
+		wantErr   bool
+	}{
+		{
+			name: "load belongs to relationship",
+			ids:  []int64{1, 2},
+			models: []*comment{
+				{
+					Id: 1, PostId: 1, Title: "commentname",
+					Post: &post{
+						node: node{Id: 1}, Title: "title1",
+					},
+				},
+				{
+					Id: 2, PostId: 2, Title: "commentname",
+					Post: &post{
+						node: node{Id: 2}, Title: "title2",
+					},
+				},
+			},
+			withEdges: true,
+			before: func(mock sqlmock.Sqlmock, models []*comment) {
+				query := fmt.Sprintf("SELECT * FROM `post` WHERE `id` IN (?, ?)")
+				mock.ExpectQuery(escape(query)).WithArgs(1, 2).WillReturnRows(newSqlmockRows(newFields(models[0].Post.Fields()), newFields(models[0].Post.Fields())))
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.before(mock, test.models)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			comments, err := loadCommentRelations(ctx, repo.Dialect(), repo.DB(), test.models...)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+			r.EqualValues(test.models, comments)
+
+		})
+	}
+}

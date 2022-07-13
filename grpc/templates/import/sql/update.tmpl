@@ -1,0 +1,84 @@
+{{ $table := . }}
+{{ $g := .Generator }}
+
+func update{{ $table.Name | pascal }}(ctx context.Context, dialect string, execer domain.Execer, {{ $table.Name | camel }} *domain.{{ $table.Name | pascal }}, updateMask ...string) (*domain.{{ $table.Name | pascal }}, error) {
+	var err error
+	updater := Updater(dialect, execer, &domain.{{ $table.Name | pascal }}{}, entsql.EQ("{{ $table.ID.Name }}", {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}))
+	_, err = updater.Update(ctx, {{ $table.Name | camel }}, updateMask...)
+	if err != nil {
+		return {{ $table.Name | camel }}, err
+	}
+
+    {{- if $table.HasRelations }}
+		{{ $table.Name | camel }}, err = mutate{{ $table.Name | pascal }}Relations(ctx, dialect, execer, {{ $table.Name | camel }}, entsql.ConflictColumns("{{ $table.ID.Name }}"), entsql.ResolveWithNewValues())
+		if err != nil {
+			return nil, err
+		}
+    {{- end }}
+	return {{ $table.Name | camel }}, nil
+}
+
+func (r *sqlRepository) Update{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel }} *domain.{{ $table.Name | pascal }}, updateMask []string) (*domain.{{ $table.Name | pascal }}, error) {
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	{{ $table.Name | camel }}, err = update{{ $table.Name | pascal }}(ctx, r.Dialect(), tx, {{ $table.Name | camel }}, updateMask...)
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+
+	return {{ $table.Name | camel }}, nil
+}
+
+func batchUpdate{{ $table.Name | pascal }}(ctx context.Context, dialect string, execer domain.Execer, {{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}, updateMask ...string) ([]*domain.{{ $table.Name | pascal }}, error) {
+	var err error
+
+	for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+		updater := Updater(dialect, execer, &domain.{{ $table.Name | pascal }}{}, entsql.EQ("{{ $table.ID.Name }}", {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}))
+		_, err = updater.Update(ctx, {{ $table.Name | camel }}, updateMask...)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+    {{- if $table.HasRelations }}
+		{{ $table.Name | camel | plural }}, err = batchMutate{{ $table.Name | pascal }}Relations(ctx, dialect, execer, {{ $table.Name | camel | plural }}, entsql.ConflictColumns("{{ $table.ID.Name }}"), entsql.ResolveWithNewValues())
+		if err != nil {
+			return nil, err
+		}
+    {{- end }}
+	return {{ $table.Name | camel | plural }}, nil
+}
+
+func (r *sqlRepository) BatchUpdate{{ $table.Name | pascal | plural }}(ctx context.Context, {{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}, updateMask []string) ([]*domain.{{ $table.Name | pascal }}, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	{{ $table.Name | camel | plural }}, err = batchUpdate{{ $table.Name | pascal }}(ctx, r.Dialect(), tx, {{ $table.Name | camel | plural }}, updateMask...)
+	if err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+
+	return {{ $table.Name | camel | plural }}, nil
+}

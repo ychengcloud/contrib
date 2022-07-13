@@ -1,0 +1,301 @@
+syntax = "proto3";
+
+package {{ .Project | snake }};
+
+option go_package = "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1;{{ .Project | snake }}";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/wrappers.proto";
+import "google/api/field_behavior.proto";
+import "google/api/annotations.proto";
+
+// Generated according to https://cloud.google.com/apis/design/standard_methods
+service {{ .Project | pascal }}Service {
+{{- range $table := .Tables}}
+
+    rpc List{{ pascal .Name | plural }}(List{{ pascal .Name | plural }}Request) returns (List{{ pascal .Name | plural  }}Response) {
+        option (google.api.http) = {
+        get: "/api/v1/{{ camel .Name | plural }}"
+        };
+    }
+
+    {{- range $f := .Fields}}
+        {{- if or $f.RelBelongsTo $f.RelManyToMany }}
+            rpc List{{ $table.Name | pascal | plural }}With{{ $f.Name | pascal }}(List{{ $table.Name | pascal | plural }}Request) returns (List{{ $table.Name | pascal | plural }}Response) {
+                option (google.api.http) = {
+                get: "/api/v1/{{ $f.Name | camel | plural }}/{parent}/{{ $table.Name | camel | plural }}"
+                };
+            }
+        {{- end}}
+
+        {{- if not $f.Remote }}
+            {{- if $f.Filterable }}
+                rpc Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}Request) returns ({{ $table.Name | pascal }}) {
+                    option (google.api.http) = {
+                        get: "/api/v1/{{ $table.Name | camel | plural }}:by{{ $f.Name | pascal }}/{ {{- .Name | snake -}} }"
+                    };
+                }
+                rpc BatchGet{{ $table.Name | pascal | plural }}By{{ $f.Name | pascal }}(BatchGet{{ $table.Name | pascal | plural }}By{{ $f.Name | pascal }}Request) returns (BatchGet{{ $table.Name | pascal | plural }}Response) {
+                    option (google.api.http) = {
+                        post: "/api/v1/{{ $table.Name | camel | plural }}:batchBy{{ $f.Name | pascal }}"
+                        body: "*"
+                    };
+                }
+            {{- end}}
+        {{- end}}
+    {{- end}}
+
+    rpc Create{{ $table.Name | pascal }}(Create{{ $table.Name | pascal }}Request) returns ({{ $table.Name | pascal }}) {
+        option (google.api.http) = {
+        post: "/api/v1/{{ $table.Name | camel | plural }}"
+        body: "{{ $table.Name | snake }}"
+        };
+    }
+
+    rpc BatchCreate{{ $table.Name | pascal | plural }}(BatchCreate{{ $table.Name | pascal | plural }}Request) returns (BatchCreate{{ $table.Name | pascal | plural }}Response) {
+        option (google.api.http) = {
+            post: "/api/v1/{{ $table.Name | camel | plural }}:batchCreate"
+            body: "*"
+        };
+    }
+
+    rpc Update{{ $table.Name | pascal }}(Update{{ $table.Name | pascal }}Request) returns ({{ $table.Name | pascal }}) {
+        option (google.api.http) = {
+            patch: "/api/v1/{{ $table.Name | camel | plural }}"
+            body: "{{ $table.Name | snake }}"
+        };
+    }
+
+    rpc BatchUpdate{{ $table.Name | pascal | plural }}(BatchUpdate{{ $table.Name | pascal | plural }}Request) returns (BatchUpdate{{ $table.Name |pascal | plural }}Response) {
+        option (google.api.http) = {
+            post: "/api/v1/{{ $table.Name | camel | plural }}:batchUpdate"
+            body: "*"
+        };
+    }
+
+    rpc Delete{{ $table.Name | pascal }}(Delete{{ $table.Name | pascal }}Request) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            delete: "/api/v1/{{ $table.Name | camel | plural }}/{id}"
+        };
+    }
+
+    rpc BatchDelete{{ $table.Name | pascal | plural }}(BatchDelete{{ $table.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
+        option (google.api.http) = {
+            post: "/api/v1/{{ $table.Name | camel | plural }}:batchDelete"
+            body: "*"
+        };
+    }
+
+    {{- range $f := .Fields}}
+        {{- if $f.RelManyToMany }}
+            rpc {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}({{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
+            option (google.api.http) = {
+                post: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Name | camel | plural}}:assign"
+                body: "*"
+            };
+            }
+
+            rpc {{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}({{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
+            option (google.api.http) = {
+                post: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Name | camel | plural}}:unassign"
+                body: "*"
+            };
+            }
+        {{- end}}
+    {{- end}}
+
+{{- end}}
+}
+
+{{- range $table := .Tables}}
+    message {{ $table.Name | pascal }} {
+        {{- range $index, $field := .Fields}}
+            {{- if not $field.Remote }}
+                {{- $type := ""}}
+                {{- $behavior := ""}}
+
+                {{- if $field.RelNone }}
+                    {{- $type = $field.Type.ProtobufKind }}
+                    {{- if eq ( $field.Name | pascal ) "CreatedAt" "UpdatedAt" }}
+                        {{- $behavior = " [(google.api.field_behavior) = OUTPUT_ONLY]"}}
+                    {{- end}}
+                {{- else }}
+                    {{- $type = (printf "%s" ( $field.Rel.RefTable.Name | pascal ) ) }}
+                {{- end }}
+
+                {{- if or $field.RelManyToMany $field.RelHasMany }}
+                    repeated {{$type}} {{ $field.Name | plural | snake }} = {{add $index 1}}{{$behavior}};
+                {{- else }}
+                    {{$type}} {{ $field.Name | snake }} = {{add $index 1}}{{$behavior}};
+                {{- end}}
+            {{- end}}
+        {{- end}}
+    }
+
+    message List{{ $table.Name | pascal | plural }}Request {
+        {{ $index := 0 }}
+        enum View {
+            VIEW_UNSPECIFIED = 0;
+
+            BASIC = 1;
+
+            WITH_EDGES = 2;
+        }
+
+        {{- if $table.HasParent }}
+        {{- $index = add $index 1}}
+            // The parent resource name, for example, "shelves/shelf1".
+            string parent = {{ $index }};
+        {{- end }}
+
+        // The maximum number of items to return.
+        {{- $index = add $index 1}}
+        int32 page_size = {{ $index }};
+
+        // The next_page_token value returned from a previous List request, if any.
+        {{- $index = add $index 1}}
+        string page_token = {{ $index }};
+
+        {{- if $table.HasFilterField }}
+        {{- $index = add $index 1}}
+            string filter = {{ $index }};
+        {{- end }}
+
+        // The string value should follow SQL syntax: comma separated list of fields.
+        // For example: "foo,bar". The default sorting order is ascending. To specify
+        // descending order for a field, a suffix " desc" should be appended to the
+        // field name. For example: "foo desc,bar". Redundant space characters in the
+        // syntax are insignificant. "foo,bar desc" and "  foo ,  bar  desc  " are
+        // equivalent.
+        {{- $index = add $index 1}}
+        string order_by = {{ $index }};
+
+        {{- $index = add $index 1}}
+        View view = {{ $index }};
+    }
+
+    message List{{ $table.Name | pascal | plural }}Response {
+        // The field name should match the noun "{{ $table.Name | pascal}}" in the method name.
+        // There will be a maximum number of items returned based on the page_size
+        // field in the request.
+        repeated {{ $table.Name | pascal }} {{ $table.Name | plural | snake }} = 1;
+
+        // Token to retrieve the next page of results, or empty if there are no more
+        // results in the list.
+        string next_page_token = 2;
+    }
+
+    {{- range $f := .Fields}}
+        {{- if not $f.Remote }}
+            {{- if $f.Filterable }}
+                message Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}Request {
+                    enum View {
+                        VIEW_UNSPECIFIED = 0;
+
+                        BASIC = 1;
+
+                        WITH_EDGES = 2;
+                    }
+
+                    // The field will contain name of the resource requested.
+                    {{ $f.Type.ProtobufKind }} {{ $f.Name | snake }} = 1;
+                    View view = 2;
+                }
+
+                message BatchGet{{ $table.Name | pascal | plural }}By{{ $f.Name | pascal }}Request {
+                    enum View {
+                        VIEW_UNSPECIFIED = 0;
+
+                        BASIC = 1;
+
+                        WITH_EDGES = 2;
+                    }
+
+                    // The field will contain name of the resource requested.
+                    repeated {{ $f.Type.ProtobufKind }} {{ $f.Name | plural | snake }} = 1;
+                    View view = 2;
+                }
+
+            {{- end}}
+        {{- end}}
+    {{- end}}
+
+    message BatchGet{{ $table.Name | pascal | plural }}Response {
+        repeated {{ $table.Name | pascal}} {{ $table.Name | plural | snake }} = 1;
+    }
+
+    message Create{{ $table.Name | pascal }}Request {
+        // The parent resource name where the {{ $table.Name | pascal }} is to be created.
+        string parent = 1;
+
+        // The {{ $table.Name | pascal }} resource to create.
+        // The field name should match the Noun in the method name.
+        {{ $table.Name | pascal }} {{ $table.Name | snake }} = 2;
+    }
+
+    message BatchCreate{{ $table.Name | pascal | plural }}Request {
+        // The parent resource name where the {{ $table.Name | pascal }} is to be created.
+        string parent = 1;
+
+        // The {{ $table.Name | pascal }} resource to create.
+        // The field name should match the Noun in the method name.
+        repeated {{ .Name | pascal }} {{ .Name | plural | snake }} = 2;
+    }
+
+    message BatchCreate{{ $table.Name | pascal | plural }}Response {
+        repeated {{ $table.Name | pascal}} {{ $table.Name | plural | snake }} = 1;
+    }
+
+    message Update{{ $table.Name | pascal }}Request {
+        // The {{ $table.Name | pascal }} resource which replaces the resource on the server.
+        {{ $table.Name | pascal }} {{.Name | snake }} = 1;
+
+        // The update mask applies to the resource. For the `FieldMask` definition,
+        // see
+        // https://developers.google.com/protocol-buffers/docs/reference/google.protobuf#fieldmask
+        google.protobuf.FieldMask update_mask = 2;
+    }
+
+    message BatchUpdate{{ $table.Name | pascal | plural }}Request {
+        // The {{ $table.Name | pascal }} resource which replaces the resource on the server.
+        repeated {{ $table.Name | pascal }} {{ $table.Name | plural | snake}} = 1;
+
+        // The update mask applies to the resource. For the `FieldMask` definition,
+        // see
+        // https://developers.google.com/protocol-buffers/docs/reference/google.protobuf#fieldmask
+        google.protobuf.FieldMask update_mask = 2;
+    }
+
+    message BatchUpdate{{ $table.Name | pascal | plural }}Response {
+        repeated {{ $table.Name | pascal}} {{ $table.Name | plural | snake }} = 1;
+    }
+
+    message Delete{{ $table.Name | pascal }}Request {
+        // The resource id of the {{ $table.Name | pascal }} to be deleted.
+        {{ $table.ID.Type.ProtobufKind }} {{ $table.ID.Name | snake }} = 1;
+    }
+
+    message BatchDelete{{ $table.Name | pascal | plural }}Request {
+        // The resource id of the {{ $table.Name | pascal }} to be deleted.
+        repeated {{ $table.ID.Type.ProtobufKind }} {{ $table.ID.Name | plural | snake }} = 1;
+    }
+
+    {{- range $f := .Fields}}
+        {{- if $f.RelManyToMany }}
+            message {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}Request{
+                // The resource id of the {{ $f.Name | pascal | plural}} to be deleted.
+                {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
+                repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 2;
+                }
+
+                message {{ $table.Name | pascal | plural }}UnassignWith{{ .Name | pascal | plural }}Request{
+                    // The resource id of the {{ $f.Name | pascal | plural}} to be deleted.
+                {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
+                repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 2;
+            }
+        {{- end}}
+    {{- end}}
+
+{{- end}}

@@ -1,0 +1,26 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package sql
+
+import (
+	"context"
+
+	entsql "entgo.io/ent/dialect/sql"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"{{ .Package }}/domain"
+)
+
+{{- $table := .}}
+
+{{ $g.Template "import/sql/list.tmpl" $table }}
+{{ $g.Template "import/sql/mutate.tmpl" $table }}
+{{ $g.Template "import/sql/create.tmpl" $table }}
+{{ $g.Template "import/sql/get.tmpl" $table }}
+{{ $g.Template "import/sql/update.tmpl" $table }}
+{{ $g.Template "import/sql/delete.tmpl" $table }}
+{{ $g.Template "import/sql/assign.tmpl" $table }}
+{{ $g.Template "import/sql/filter.tmpl" $table }}
+{{ $g.Template "import/sql/parent.tmpl" $table }}

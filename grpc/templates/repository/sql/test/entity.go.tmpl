@@ -1,0 +1,173 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package test
+
+import (
+	"context"
+	"time"
+
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"{{ .Package }}/domain"
+)
+
+type node struct {
+	Id int64
+}
+
+func (n node) ID() *domain.ID {
+	return &domain.ID{Name: "id", Type: "numberic", Value: n.Id, AutoIncrement: true}
+}
+
+type post struct {
+	node
+	AuthorId    int64
+	Title       string
+	MetaTitle   string
+	Slug        string
+	Summary     string
+	Published   bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	PublishedAt time.Time
+	Content     string
+
+	// BelongsTo
+	User *user
+	// Mant to Many
+	Tags []*tag
+	// Has Many
+	Comments []*comment
+	// Has One
+	Meta *meta
+}
+
+func (p *post) New() domain.Entity {
+	return &post{}
+}
+
+func (p *post) TableName() string {
+	return "post"
+}
+
+func (p *post) Fields() ([]string, []any) {
+	return []string{"id", "author_id", "title", "meta_title", "slug", "summary", "published", "created_at", "updated_at", "published_at", "content"}, []any{&p.node.Id, &p.AuthorId, &p.Title, &p.MetaTitle, &p.Slug, &p.Summary, &p.Published, &p.CreatedAt, &p.UpdatedAt, &p.PublishedAt, &p.Content}
+}
+
+func (p *post) Valid() error {
+	return nil
+}
+
+type tag struct {
+	node
+	Id        int64
+	Title     string
+	MetaTitle string
+	Slug      string
+	Content   string
+}
+
+func (t *tag) New() domain.Entity {
+	return &tag{}
+}
+
+//TableName
+func (t *tag) TableName() string {
+	return "tag"
+}
+
+func (t *tag) Fields() ([]string, []any) {
+	return []string{"id", "title", "meta_title", "slug", "content"}, []any{&t.Id, &t.Title, &t.MetaTitle, &t.Slug, &t.Content}
+}
+
+func (t *tag) Valid() error {
+	return nil
+}
+
+type comment struct {
+	node
+	Id          int64
+	PostId      int64
+	ParentId    int64
+	Title       string
+	Published   bool
+	CreatedAt   time.Time
+	PublishedAt time.Time
+	Content     string
+
+	Post *post
+}
+
+func (c *comment) New() domain.Entity {
+	return &comment{}
+}
+
+//TableName
+func (c *comment) TableName() string {
+	return "comment"
+}
+
+func (c *comment) Fields() ([]string, []any) {
+	return []string{"id", "post_id", "parent_id", "title", "published", "created_at", "published_at", "content"}, []any{&c.Id, &c.PostId, &c.ParentId, &c.Title, &c.Published, &c.CreatedAt, &c.PublishedAt, &c.Content}
+}
+
+func (c *comment) Valid() error {
+	return nil
+}
+
+type meta struct {
+	Id      uuid.UUID
+	PostId  int64
+	Key     string
+	Content string
+
+	// BelongsTo
+	Post *post
+}
+
+func (m *meta) ID() *domain.ID {
+	return &domain.ID{Name: "id", Type: "uuid", AutoIncrement: false}
+}
+
+func (m *meta) New() domain.Entity {
+	id := uuid.New()
+	return &meta{Id: id}
+}
+
+func (m *meta) TableName() string {
+	return "meta"
+}
+
+func (m *meta) Fields() ([]string, []any) {
+	return []string{"id", "post_id", "key", "content"}, []any{&m.Id, &m.PostId, &m.Key, &m.Content}
+}
+
+func (m *meta) Valid() error {
+	return nil
+}
+
+type user struct {
+	node
+	FirstName string
+	LastName  string
+}
+
+func (m *user) New() domain.Entity {
+	return &user{}
+}
+
+func (m *user) TableName() string {
+	return "user"
+}
+
+func (m *user) Fields() ([]string, []any) {
+	return []string{"id", "first_name", "last_name"}, []any{&m.node.Id, &m.FirstName, &m.LastName}
+}
+
+func (m *user) Valid() error {
+	return nil
+}

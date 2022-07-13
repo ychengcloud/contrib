@@ -1,0 +1,123 @@
+{{ $table := . }}
+{{- if $table.HasFilterField }}
+    // 处理  过滤条件
+    // op 取值 OR, AND, NOT
+    func apply{{ $table.Name | pascal }}Filter(filterInput *domain.{{ $table.Name | pascal }}FilterInput) (*entsql.Predicate) {
+        var preds []*entsql.Predicate
+        if filterInput.NOT != nil {
+            pred := apply{{ $table.Name | pascal }}Filter(filterInput.NOT)
+            preds = append(preds, entsql.Not(pred))
+        }
+
+        if filterInput.OR != nil {
+            switch n := len(filterInput.OR); {
+            case n == 1:
+                pred := apply{{ $table.Name | pascal }}Filter(filterInput.OR[0])
+                preds = append(preds, pred)
+            case n > 1:
+                ors := make([]*entsql.Predicate, 0, n)
+                for _, or := range filterInput.OR {
+                    pred := apply{{ $table.Name | pascal }}Filter(or)
+                    ors = append(ors, pred)
+                }
+                preds = append(preds, entsql.Or(ors...))
+
+            }
+        }
+        if filterInput.AND != nil {
+            switch n := len(filterInput.OR); {
+            case n == 1:
+                pred := apply{{ $table.Name | pascal }}Filter(filterInput.AND[0])
+                preds = append(preds, pred)
+            case n > 1:
+                ands := make([]*entsql.Predicate, 0, n)
+                for _, and := range filterInput.AND {
+                    pred := apply{{ $table.Name | pascal }}Filter(and)
+                    ands = append(ands, pred)
+                }
+                preds = append(preds, entsql.And(ands...))
+
+            }
+        }
+        {{- range $f := $table.Fields}}
+            {{- if $f.Filterable }}
+                if filterInput.{{ $f.Name | pascal }} != nil {
+                    {{- range $op := $f.Ops }}
+                        {{- if eq $op.Name "Eq"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.EQ("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "Neq"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.NEQ("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "In"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                values := make([]any, len(filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                                for i := range filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} {
+                                    values[i] = filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}[i]
+                                }
+                                preds = append(preds, entsql.In("{{ $f.Name }}", values...))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "NotIn"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                values := make([]any, len(filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                                for i := range filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} {
+                                    values[i] = filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}[i]
+                                }
+                                preds = append(preds, entsql.NotIn("{{ $f.Name }}", values...))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "Gt"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.GT("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "Gte"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.GTE("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "Lt"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.LT("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "Lte"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.LTE("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "Contains"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.Contains("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "StartsWith"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.HasPrefix("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}
+                        {{- if eq $op.Name "EndsWith"}}
+                            if filterInput.{{ $f.Name | pascal }}.{{ $op.Name }} != nil {
+                                preds = append(preds, entsql.HasSuffix("{{ $f.Name }}", *filterInput.{{ $f.Name | pascal }}.{{ $op.Name }}))
+                            }
+                        {{- end}}	
+                    {{- end }}
+                }
+            {{- end}}
+        {{- end}}
+
+        switch len(preds) {
+        case 0:
+            return nil
+        case 1:
+            return preds[0]
+        default:
+            return entsql.And(preds...)
+        }
+    }
+{{- end}}

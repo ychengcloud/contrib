@@ -1,0 +1,155 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package sql
+
+import (
+	"context"
+	"fmt"
+
+	entsql "entgo.io/ent/dialect/sql"
+
+	"{{ .Package }}/domain"
+	"{{ .Package }}/repository"
+)
+
+type sqlRepository struct {
+	repository.DBContext
+}
+
+func NewRepository(dbContext repository.DBContext) repository.Repository {
+	return &sqlRepository{
+		DBContext: dbContext,
+	}
+}
+
+func AddManyToManyRelation(ctx context.Context, dialect string, execer domain.Execer, joinTable *domain.JoinTable, values [][]any) error {
+	if joinTable == nil {
+		return fmt.Errorf("relation JoinTable must be set")
+	}
+	insert := entsql.Dialect(dialect).Insert(joinTable.Name).Columns(joinTable.Field, joinTable.RefField).OnConflict(entsql.ResolveWithIgnore())
+	for _, v := range values {
+		insert.Values(v...)
+	}
+	query, args := insert.Query()
+	_, err := execer.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeleteManyToManyRelation(ctx context.Context, dialect string, execer domain.Execer, joinTable *domain.JoinTable, preds *entsql.Predicate) error {
+	if joinTable == nil {
+		return fmt.Errorf("relation JoinTable must be set")
+	}
+	delete := entsql.Dialect(dialect).Delete(joinTable.Name).Where(preds)
+	query, args := delete.Query()
+	_, err := execer.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func GetEntityID[T domain.Entity](entity T) (driver.Value, error) {
+	idDef := entity.ID()
+	if idDef == nil {
+		return nil, fmt.Errorf("entity %T must have an ID field", entity)
+	}
+	fields, values := entity.Fields()
+	for i, field := range fields {
+		if field == idDef.Name {
+			return values[i], nil
+		}
+	}
+	return nil, fmt.Errorf("entity %T must have an ID field", entity)
+}
+
+func LoadManyToManyRelation[T domain.Entity, R domain.Entity](ctx context.Context, dialect string, querier domain.Querier, joinTable *domain.JoinTable, entities []T, f func([]any, []any, map[any]T, map[any]R) error) error {
+	if joinTable == nil {
+		return fmt.Errorf("relation JoinTable must be set")
+	}
+
+	if joinTable.Field == "" || joinTable.RefField == "" {
+		return fmt.Errorf("relation JoinTable field and ref field must be set")
+	}
+
+	
+	ids := make([]any, 0, len(entities))
+	for _, entity := range entities {
+		idDef := entity.ID()
+		if idDef == nil {
+			return fmt.Errorf("entity %T must have an ID field", entity)
+		}
+		ids = append(ids, idDef.Value)
+	}
+
+	// Load many to many relationship
+	selector := entsql.Dialect(dialect).
+		Select(joinTable.Field, joinTable.RefField).From(entsql.Table(joinTable.Name)).
+		Where(entsql.In(joinTable.Field, ids...))
+
+	query, args := selector.Query()
+	rows, err := querier.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	baseIds := make([]any, 0)
+	refIds := make([]any, 0)
+	for rows.Next() {
+		var baseId int64
+		var refId int64
+		if err := rows.Scan(&baseId, &refId); err != nil {
+			return err
+		}
+		baseIds = append(baseIds, baseId)
+		refIds = append(refIds, refId)
+	}
+
+	if len(refIds) == 0 {
+		return nil
+	}
+	
+	var refEntity R
+	refEntity, err = New[R]()
+	if err != nil {
+		return err
+	}
+
+	refIDRef := refEntity.ID()
+	if refIDRef == nil {
+		return fmt.Errorf("entity %T must have an ID field", refEntity)
+	}
+	refQuery := Query(dialect, querier, refEntity)
+
+	refEntities, err := refQuery.Find(ctx, entsql.In(refIDRef.Name, refIds...))
+	if err != nil {
+		return err
+	}
+
+	baseSet := make(map[any]T, 0)
+	for _, entity := range entities {
+		idDef := entity.ID()
+		if idDef == nil {
+			return fmt.Errorf("entity %T must have an ID field", entity)
+		}
+		baseSet[idDef.Value] = entity
+	}
+	refSet := make(map[any]R, 0)
+	for _, refEntity := range refEntities {
+		idDef := refEntity.ID()
+		if idDef == nil {
+			return fmt.Errorf("entity %T must have an ID field", refEntity)
+		}
+		refSet[idDef.Value] = refEntity
+	}
+
+	err = f(baseIds, refIds, baseSet, refSet)
+	if err != nil {
+		return err
+	}
+	return nil
+}

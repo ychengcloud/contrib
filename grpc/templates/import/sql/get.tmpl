@@ -1,0 +1,52 @@
+
+{{ $table := . }}
+
+{{- range $f := .Fields}}
+	{{- if not $f.Remote }}
+		{{- if $f.Filterable }}
+            func (r *sqlRepository) Get{{ $table.Name | pascal }}By{{ $f.Name | pascal }}(ctx context.Context, {{ $f.Name | camel }} {{ $f.Type.Kind }}, withEdges bool) (*domain.{{ $table.Name | pascal }}, error) {
+            	query := Query(r.Dialect(), r.DB(), &domain.{{ $table.Name | pascal }}{})
+                {{ $table.Name | camel | plural }}, err := query.Find(ctx, entsql.EQ("{{ $f.Name }}", {{ $f.Name | camel }}))
+                if err != nil {
+                    return nil, err
+                }
+
+                if len({{ $table.Name | camel | plural }}) != 1 {
+                    return nil, status.Errorf(codes.NotFound, "")
+                }
+
+                {{- if $table.HasRelations }}
+                    if withEdges {
+                        {{ $table.Name | camel | plural }}, err = load{{ $table.Name | pascal }}Relations(ctx, r.Dialect(), r.DB(), {{ $table.Name | camel | plural }})
+                        if err != nil {
+                            return nil, err
+                        }
+                    }
+                {{- end }}
+                
+                return {{ $table.Name | camel | plural }}[0], err
+            }
+            func (r *sqlRepository) BatchGet{{ $table.Name | pascal | plural }}By{{ $f.Name | pascal }}(ctx context.Context, {{ $f.Name | camel | plural }} []{{ $f.Type.Kind }}, withEdges bool) ([]*domain.{{ $table.Name | pascal }}, error) {
+                if len({{ $f.Name | camel | plural }}) == 0 {
+                    return nil, nil
+                }
+                values := make([]any, len({{ $f.Name | camel | plural }}))
+                for i := range {{ $f.Name | camel | plural }} {
+                    values[i] = {{ $f.Name | camel | plural }}[i]
+                }
+                query := Query(r.Dialect(), r.DB(), &domain.{{ $table.Name | pascal }}{})
+                {{ $table.Name | camel | plural }}, err := query.Find(ctx, entsql.In("{{ $f.Name }}", values...))
+
+                {{- if $table.HasRelations }}
+                    if withEdges {
+                        {{ $table.Name | camel | plural }}, err = load{{ $table.Name | pascal }}Relations(ctx, r.Dialect(), r.DB(), {{ $table.Name | camel | plural }})
+                        if err != nil {
+                            return nil, err
+                        }
+                    }
+                {{- end }}
+                return {{ $table.Name | camel | plural }}, err
+            }
+        {{- end}}
+    {{- end}}
+{{- end}}

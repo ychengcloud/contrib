@@ -1,0 +1,402 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package sql
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+
+	entsql "entgo.io/ent/dialect/sql"
+
+	"{{ .Package }}/domain"
+)
+
+const (
+	MaxLimit = 1000
+)
+
+type querier[T domain.Entity] struct {
+	dialect string
+	querier domain.Querier
+}
+
+func Query[T domain.Entity](dialect string, q domain.Querier, _ T) *querier[T] {
+	return &querier[T]{dialect: dialect, querier: q}
+}
+
+func New[T domain.Entity]() (T, error) {
+	var e T
+	instance := e.New()
+	switch v := instance.(type) {
+	case T:
+		e = v
+	default:
+		return e, fmt.Errorf("invalid table type: %T", instance)
+	}
+
+	return e, nil
+}
+
+func (q *querier[T]) List(ctx context.Context, preds *entsql.Predicate, orderBy string, pageSize int32, pageToken string) (entities []T, nextToken string, err error) {
+	db := q.querier
+
+	var entity T
+	entity, err = New[T]()
+	if err != nil {
+		return
+	}
+
+	selector := entsql.Dialect(q.dialect).Select().From(entsql.Table((entity.TableName())))
+	entities = make([]T, 0)
+
+	if preds != nil {
+		selector.Where(preds)
+	}
+
+	limit, offset, err := applyConditions(selector, orderBy, pageSize, pageToken)
+	if err != nil {
+		return
+	}
+
+	query, args := selector.Query()
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		entity, err = New[T]()
+		if err != nil {
+			return
+		}
+
+		_, v := entity.Fields()
+		err = rows.Scan(v...)
+		if err != nil {
+			return
+		}
+
+		entities = append(entities, entity)
+	}
+	if err = rows.Err(); err != nil {
+		return
+	}
+
+	if len(entities) > limit {
+		nextToken = strconv.Itoa(offset + limit)
+		entities = entities[:limit]
+	}
+
+	return
+}
+
+func (q *querier[T]) Find(ctx context.Context, preds *entsql.Predicate) (entities []T, err error) {
+	db := q.querier
+
+	var entity T
+	entity, err = New[T]()
+	if err != nil {
+		return
+	}
+
+	entities = make([]T, 0)
+	selector := entsql.Dialect(q.dialect).
+		Select().From(entsql.Table(entity.TableName())).
+		Where(preds)
+
+	query, args := selector.Query()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		entity, err = New[T]()
+		if err != nil {
+			return
+		}
+
+		_, v := entity.Fields()
+		err = rows.Scan(v...)
+		if err != nil {
+			return
+		}
+
+		entities = append(entities, entity)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return
+}
+
+func applyConditions(selector *entsql.Selector, orderBy string, count int32, token string) (limit, offset int, err error) {
+	if strings.TrimSpace(orderBy) != "" {
+		selector.OrderBy(orderBy)
+	}
+	limit = int(count)
+	if limit <= 0 {
+		limit = MaxLimit
+	}
+
+	offset = 0
+	if t := strings.TrimSpace(token); t != "" {
+		offset, err = strconv.Atoi(t)
+		if err != nil {
+			return
+		}
+	}
+
+	selector.Limit(limit + 1)
+	if offset > 0 {
+		selector.Offset(offset)
+	}
+	return
+}
+
+type creator[T domain.Entity] struct {
+	dialect    string
+	execer     domain.Execer
+	OnConflict []entsql.ConflictOption
+}
+
+func scanInt64(s any, v int64) {
+	switch s.(type) {
+	case *int64:
+		*s.(*int64) = v
+	case *int:
+		*s.(*int) = int(v)
+	case *int32:
+		*s.(*int32) = int32(v)
+	case *int16:
+		*s.(*int16) = int16(v)
+	case *int8:
+		*s.(*int8) = int8(v)
+
+	}
+}
+func Create[T domain.Entity](dialect string, execer domain.Execer, _ T, onConflict ...entsql.ConflictOption) *creator[T] {
+	return &creator[T]{dialect: dialect, execer: execer, OnConflict: onConflict}
+}
+
+func (c *creator[T]) Save(ctx context.Context, entity T) (T, error) {
+	fields, v := entity.Fields()
+	idDef := entity.ID()
+
+	var idField any
+	columns := make([]string, 0)
+	values := make([]any, 0)
+
+	for i, field := range fields {
+		if isAutoIncrement(field, idDef) {
+			idField = v[i]
+			continue
+		}
+
+		columns = append(columns, field)
+		values = append(values, v[i])
+	}
+
+	insert := entsql.Dialect(c.dialect).
+		Insert(entity.TableName()).
+		Columns(columns...).
+		Values(values...)
+
+	if len(c.OnConflict) > 0 {
+		insert.OnConflict(c.OnConflict...)
+	}
+
+	query, args := insert.Query()
+	result, err := c.execer.ExecContext(ctx, query, args...)
+	if err != nil {
+		var e T
+		return e, err
+	}
+
+	if c.dialect == "mysql" {
+		if idDef != nil && idDef.AutoIncrement {
+			id, err := result.LastInsertId()
+			if err != nil {
+				return entity, err
+			}
+			scanInt64(idField, id)
+		}
+	}
+
+	return entity, nil
+}
+
+func isUUID(field string, idDef *domain.ID) bool {
+	return idDef != nil && field == idDef.Name && idDef.Type == "uuid"
+}
+
+func isAutoIncrement(field string, idDef *domain.ID) bool {
+	return idDef != nil && field == idDef.Name && idDef.AutoIncrement
+}
+
+func (c *creator[T]) BatchSave(ctx context.Context, entities []T) ([]T, error) {
+	if len(entities) == 0 {
+		return entities, nil
+	}
+	tableName := entities[0].TableName()
+	fields, _ := entities[0].Fields()
+	idDef := entities[0].ID()
+	columns := make([]string, 0)
+	for _, field := range fields {
+		if isAutoIncrement(field, idDef) {
+			continue
+		}
+		columns = append(columns, field)
+	}
+
+	insert := entsql.Dialect(c.dialect).Insert(tableName).Columns(columns...)
+
+	idFields := make([]any, len(entities))
+	for i, entity := range entities {
+		if entity.TableName() != tableName {
+			return entities, fmt.Errorf("batch save only for one table: %s, %s", entity.TableName(), tableName)
+		}
+
+		fields, v := entity.Fields()
+
+		values := make([]any, 0)
+		for j, field := range fields {
+			if isAutoIncrement(field, idDef) {
+				idFields[i] = v[j]
+				continue
+			}
+
+			values = append(values, v[j])
+		}
+
+		insert.Values(values...)
+
+	}
+	if len(c.OnConflict) > 0 {
+		insert.OnConflict(c.OnConflict...)
+	}
+
+	query, args := insert.Query()
+	result, err := c.execer.ExecContext(ctx, query, args...)
+	if err != nil {
+		return entities, err
+	}
+
+	if c.dialect == "mysql" {
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return entities, err
+		}
+		if affected != int64(len(entities)) {
+			return entities, fmt.Errorf("batch save affected %d, expected %d", affected, len(entities))
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			return entities, err
+		}
+		for i, entity := range entities {
+			idDef := entity.ID()
+			if idDef.Type == "numberic" && idDef.AutoIncrement {
+				scanInt64(idFields[i], id)
+				id++
+			}
+		}
+	}
+
+	return entities, nil
+}
+
+type updater[T domain.Entity] struct {
+	dialect string
+	execer  domain.Execer
+	preds   *entsql.Predicate
+}
+
+func Updater[T domain.Entity](dialect string, execer domain.Execer, _ T, preds *entsql.Predicate) *updater[T] {
+	return &updater[T]{dialect: dialect, execer: execer, preds: preds}
+}
+
+func (u *updater[T]) Update(ctx context.Context, entity T, mask ...string) (affected int64, err error) {
+	update := entsql.Dialect(u.dialect).
+		Update(entity.TableName())
+
+	fields, v := entity.Fields()
+
+	idDef := entity.ID()
+
+	for i := range fields {
+		if fields[i] == idDef.Name && idDef.Type == "numberic" && idDef.AutoIncrement {
+			continue
+		}
+		if len(mask) > 0 {
+			found := false
+			for _, m := range mask {
+				if fields[i] == m {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		update.Set(fields[i], v[i])
+	}
+
+	if u.preds != nil {
+		update.Where(u.preds)
+	}
+
+	query, args := update.Query()
+	result, err := u.execer.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	affected, err = result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	return affected, nil
+}
+
+type deleter[T domain.Entity] struct {
+	dialect string
+	execer  domain.Execer
+	preds   *entsql.Predicate
+}
+
+func Deleter[T domain.Entity](dialect string, execer domain.Execer, _ T, preds *entsql.Predicate) *deleter[T] {
+	return &deleter[T]{dialect: dialect, execer: execer, preds: preds}
+}
+
+func (d *deleter[T]) Delete(ctx context.Context) (affected int64, err error) {
+	var entity T
+	entity, err = New[T]()
+	if err != nil {
+		return
+	}
+	query, args := entsql.Dialect(d.dialect).
+		Delete(entity.TableName()).
+		Where(d.preds).
+		Query()
+	fmt.Println("query", query, args)
+	res, err := d.execer.ExecContext(ctx, query, args...)
+	if err != nil {
+		return
+	}
+	affected, err = res.RowsAffected()
+	if err != nil {
+		return
+	}
+	return
+}

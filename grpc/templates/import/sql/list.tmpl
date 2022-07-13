@@ -1,0 +1,137 @@
+{{ $table := . }}
+
+{{- if $table.HasRelations }}
+    func load{{ $table.Name | pascal }}Relations(ctx context.Context, dialect string, querier domain.Querier, {{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}) ([]*domain.{{ $table.Name | pascal }}, error) {
+        if len({{ $table.Name | camel | plural }}) == 0 {
+            return nil, nil
+        }
+        var err error
+        {{ $table.ID.Name | camel | plural }} := make([]any, 0, len({{ $table.Name | camel | plural }}))
+        for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+            {{ $table.ID.Name | camel | plural }} = append({{ $table.ID.Name | camel | plural }}, {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }})
+        }
+
+        {{- range $f := .Fields}}
+            {{- if $f.RelBelongsTo }}
+                // Load belongs to relationship
+                {{ $f.Rel.Field.Name | camel | plural }} := make([]any, 0, len({{ $table.Name | camel | plural }}))
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    {{ $f.Rel.Field.Name | camel | plural }} = append({{ $f.Rel.Field.Name | camel | plural }}, {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }})
+                }
+
+                {{ $f.Name | camel }}Query := Query(dialect, querier, &domain.{{ $f.Rel.RefTable.Name | pascal }}{})
+                {{ $f.Rel.RefTable.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $table.ID.Name | camel | plural }}...))
+                if err != nil {
+                    return nil, err
+                }
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $f.Rel.RefTable.Name | camel | plural }} {
+                        if {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} == {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} {
+                            {{ $table.Name | camel }}.{{ $f.Name | pascal }} = {{ $f.Rel.RefTable.Name | camel }}
+                        }
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelHasOne }}
+                {{ $f.Name | camel }}Query := Query(dialect, querier, &domain.{{ $f.Rel.RefTable.Name | pascal }}{})
+                {{ $f.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $table.ID.Name | camel | plural }}...))
+                if err != nil {
+                    return nil, err
+                }
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $f.Rel.RefTable.Name | camel | plural }} {
+                        if {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} == {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} {
+                            {{ $table.Name | camel }}.{{ $f.Rel.RefTable.Name | pascal | plural }} = {{ $f.Rel.RefTable.Name | camel }}
+                        }
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelHasMany }}
+                {{ $f.Name | camel }}Query := Query(dialect, querier, &domain.{{ $f.Rel.RefTable.Name | pascal }}{})
+                {{ $f.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $table.ID.Name | camel | plural }}...))
+                if err != nil {
+                    return nil, err
+                }
+                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                    {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} = make([]*domain.{{ $f.Rel.RefTable.Name | pascal }}, 0)
+                    for _, {{ $f.Name | camel }} := range {{ $f.Name | camel | plural }} {
+                        if {{ $f.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} == {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} {
+                            {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} = append({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}, {{ $f.Name | camel }})
+                        }
+                    }
+                }
+            {{- end}}
+
+            {{- if $f.RelManyToMany }}
+                {{ $f.Rel.RefTable.Name | camel }}JoinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+                err = LoadManyToManyRelation(ctx, dialect, querier, {{ $f.Rel.RefTable.Name | camel }}JoinTable, {{ $table.Name | camel | plural }}, func({{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} []any, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []any, {{ $table.Name | camel }}Set map[any]*domain.{{ $table.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}Set map[any]*domain.{{ $f.Rel.RefTable.Name | pascal }}) error {
+                    for i := range {{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} {
+                        if {{ $table.Name | camel }}, ok := {{ $table.Name | camel }}Set[{{ $f.Rel.JoinTable.JoinField.Name | camel | plural }}[i]]; ok {
+                            {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} = append({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}, {{ $f.Rel.RefTable.Name | camel }}Set[{{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }}[i]])
+                        }
+                    }
+                    return nil
+                })
+                if err != nil {
+                    return nil, err
+                }
+            {{- end}}
+        {{- end}}
+
+        return {{ $table.Name | camel | plural }}, nil
+    }
+{{- end}}
+
+func list{{ $table.Name | pascal | plural }}(ctx context.Context, dialect string, querier domain.Querier, {{- if $table.HasParent }}parent string, parentName string,{{- end }} {{- if $table.HasFilterField }}filter *domain.{{ $table.Name | pascal }}FilterInput,{{- end }} orderBy string, pageSize int32, pageToken string, withEdges bool) ({{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}, nextToken string, err error) {
+    var preds []*entsql.Predicate
+
+    {{- if $table.HasParent }}
+        if len(parent) > 0 && len(parentName) > 0 {
+            p, err := apply{{ $table.Name | pascal }}Parent(ctx, dialect, querier, parent, parentName)
+            if err != nil {
+                return nil, "", err
+            }
+
+            preds = append(preds, p)
+        }
+    {{- end }}
+
+    {{- if $table.HasFilterField }}
+        if filter != nil {
+            preds = append(preds, apply{{ $table.Name | pascal }}Filter(filter))
+        }
+    {{- end }}
+
+	var pred *entsql.Predicate
+	switch len(preds) {
+	case 0:
+	case 1:
+		pred = preds[0]
+	default:
+		pred = entsql.And(preds...)
+	}
+
+	query := Query(dialect, querier, &domain.{{ $table.Name | pascal }}{})
+
+	{{ $table.Name | camel | plural }}, nextToken, err = query.List(ctx, pred, orderBy, pageSize, pageToken)
+	if err != nil {
+		return nil, "", err
+	}
+
+    {{- if $table.HasRelations }}
+        if withEdges {
+            {{ $table.Name | camel | plural }}, err = load{{ $table.Name | pascal }}Relations(ctx, dialect, querier, {{ $table.Name | camel | plural }})
+            if err != nil {
+                return nil, "", err
+            }
+        }
+    {{- end }}
+
+	return
+}
+
+func (r *sqlRepository) List{{ $table.Name | pascal | plural }}(ctx context.Context, {{- if $table.HasParent }}parent string, parentName string,{{- end }} {{- if $table.HasFilterField }}filter *domain.{{ $table.Name | pascal }}FilterInput,{{- end }} orderBy string, pageSize int32, pageToken string, withEdges bool) ({{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}, nextToken string, err error) {
+	return list{{ $table.Name | pascal | plural }}(ctx, r.Dialect(), r.DB(), {{- if $table.HasParent }}parent, parentName,{{- end }} {{- if $table.HasFilterField }}filter,{{- end }} orderBy, pageSize, pageToken, withEdges)
+}

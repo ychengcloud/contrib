@@ -1,0 +1,118 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package server
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/jaeger"
+	"go.opentelemetry.io/otel/sdk/resource"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+
+	"{{ .Package }}/config"
+	"{{ .Package }}/services"
+	pb "{{ $g.Cfg.Attrs.protoPkg }}/gen/go/{{ .Project }}/v1"
+)
+
+type server struct {
+	cfg *config.Config
+	log *zap.Logger
+	v   *validator.Validate
+	{{ .Project | camel }}SvcServer pb.{{ .Project | pascal }}ServiceServer
+}
+
+func NewServer(log *zap.Logger, cfg *config.Config, {{ .Project | camel }}SvcServer pb.{{ .Project | pascal }}ServiceServer) *server {
+	return &server{log: log, cfg: cfg, v: validator.New(), {{ .Project | camel }}SvcServer: {{ .Project | camel }}SvcServer}
+}
+
+func (s *server) Run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	if s.cfg.Prometheus.Enable {
+		s.runPrometheusServer(cancel)
+	}
+
+	if s.cfg.Tracing.Enable {
+		jaegerCfg := s.cfg.Tracing.Jaeger
+		// Create the Jaeger exporter
+		host, port, ok := strings.Cut(jaegerCfg.Reporter.LocalAgentHostPort, ":")
+		if !ok {
+			return fmt.Errorf("invalid local agent host:port %s", jaegerCfg.Reporter.LocalAgentHostPort)
+		}
+		exp, err := jaeger.New(jaeger.WithAgentEndpoint(
+			jaeger.WithAgentHost(host), jaeger.WithAgentPort(port),
+		))
+		if err != nil {
+			return err
+		}
+		tp := tracesdk.NewTracerProvider(
+			// Always be sure to batch in production.
+			tracesdk.WithBatcher(exp),
+			// Record information about this application in a Resource.
+			tracesdk.WithResource(resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceNameKey.String(jaegerCfg.ServiceName),
+				attribute.String("environment", s.cfg.Tracing.Environment),
+				attribute.Int64("ID", s.cfg.Tracing.ID),
+			)),
+		)
+
+		// Register our TracerProvider as the global so any imported
+		// instrumentation in the future will default to using it.
+		otel.SetTracerProvider(tp)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Cleanly shutdown and flush telemetry when the application exits.
+		defer func(ctx context.Context) {
+			// Do not make the application hang when it is shutdown.
+			ctx, cancel = context.WithTimeout(ctx, time.Second*5)
+			defer cancel()
+			if err := tp.Shutdown(ctx); err != nil {
+				log.Fatal(err)
+			}
+		}(ctx)
+	}
+
+	closeGrpcServer, grpcServer, err := s.newGrpcServer()
+	if err != nil {
+		return err
+	}
+	defer closeGrpcServer() // nolint: errcheck
+	pb.Register{{ .Project | pascal }}ServiceServer(grpcServer, s.{{ .Project | camel }}SvcServer)
+
+	hsrv := health.NewServer()
+	hsrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthpb.RegisterHealthServer(grpcServer, hsrv)
+
+	<-ctx.Done()
+	grpcServer.GracefulStop()
+	return nil
+}
+
+func (s *server) runPrometheusServer(cancel context.CancelFunc) {
+	go func() {
+		prometheusServer := &http.Server{Addr: fmt.Sprintf(":%d", s.cfg.Prometheus.Port)}
+		http.Handle("/metrics", promhttp.Handler())
+		s.log.Sugar().Infof("Metrics server is running on port: %d", s.cfg.Prometheus.Port)
+		if err := prometheusServer.ListenAndServe(); err != nil {
+			s.log.Sugar().Errorf("prometheusServer.Start: %v", err)
+			cancel()
+		}
+	}()
+}

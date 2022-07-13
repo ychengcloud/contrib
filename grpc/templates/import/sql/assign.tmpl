@@ -1,0 +1,74 @@
+{{ $table := . }}
+
+
+{{- range $f := .Fields}}
+	{{- if $f.RelManyToMany }}
+		func (r *sqlRepository) {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }} )  error {
+			var err error
+			tx, err := r.DB().Begin()
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err != nil {
+					tx.Rollback()
+				}
+			}()
+
+			values := make([][]any, 0)
+
+			for _, {{ $f.Rel.JoinTable.JoinRefField.Name | camel }} := range {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} {
+				values = append(values, []any{ {{ $f.Rel.JoinTable.JoinField.Name | camel }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel }} })
+			}
+
+			if len(values) > 0 {
+				joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+				err = AddManyToManyRelation(ctx, r.Dialect(), tx, joinTable, values)
+				if err != nil {
+					return err
+				}
+			}
+
+			tx.Commit()
+			return nil
+		}
+
+		func (r *sqlRepository) {{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }} )  error {
+			var err error
+			tx, err := r.DB().Begin()
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err != nil {
+					tx.Rollback()
+				}
+			}()
+
+			values := make([][]any, 0)
+
+			for _, {{ $f.Rel.JoinTable.JoinRefField.Name | camel }} := range {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} {
+				values = append(values, []any{ {{ $f.Rel.JoinTable.JoinField.Name | camel }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel }} })
+			}
+
+			if len(values) > 0 {
+				joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+				err = DeleteManyToManyRelation(
+					ctx, 
+					r.Dialect(), 
+					tx, 
+					joinTable, 
+					entsql.And(
+						entsql.EQ(joinTable.Field, {{ $f.Rel.JoinTable.JoinField.Name | camel }}), entsql.In(joinTable.RefField, values),
+					),
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			tx.Commit()
+			return nil
+		}
+	{{- end}}
+{{- end}}

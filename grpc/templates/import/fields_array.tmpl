@@ -1,0 +1,7 @@
+{{- $fields := list }}
+{{- range . }}
+	{{- if not .PrimaryKey }}
+		{{- $fields = append $fields (printf "\"%s\"" ( .Name | pascal ) ) }}
+	{{- end}}
+{{- end}}
+{{- join ", " $fields -}}

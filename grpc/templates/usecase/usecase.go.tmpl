@@ -1,0 +1,32 @@
+package usecase
+
+import (
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+
+	"{{ .Package }}/repository"
+)
+
+type Usecase struct {
+	logger *zap.Logger
+	repo   repository.Repository
+}
+
+func NewUsecase(logger *zap.Logger, repo repository.Repository) *Usecase {
+	return &Usecase{
+		logger: logger,
+		repo:   repo,
+	}
+}
+
+func comparePasswords(hashedPwd string, plainPwd []byte) bool {
+	// Since we'll be getting the hashed password from the DB it
+	// will be a string so we'll need to convert it to a byte slice
+	byteHash := []byte(hashedPwd)
+	err := bcrypt.CompareHashAndPassword(byteHash, plainPwd)
+	if err != nil {
+		return false
+	}
+
+	return true
+}

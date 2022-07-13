@@ -1,0 +1,59 @@
+{{ $g := .Generator }}
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"strings"
+
+	"github.com/XSAM/otelsql"
+	"go.opencensus.io/trace"
+	{{- if eq $g.Loader.Dialect "mysql" }}
+	_ "github.com/go-sql-driver/mysql"
+	{{- end }}
+	{{- if eq $g.Loader.Dialect "postgres" }}
+	_ "github.com/lib/pq"
+	{{- end }}
+
+	"{{ .Package }}/config"
+	reposql "{{ .Package }}/repository/sql"
+	"{{ .Package }}/server"
+	"{{ .Package }}/service"
+
+)
+
+var configFile = flag.String("c", "config", "set config file")
+
+func main() {
+	flag.Parse()
+
+	cfg, err := config.New(*configFile, strings.ToUpper("fuxi_"))
+	if err != nil {
+		log.Fatalln("Failed to listen:", err)
+
+	}
+
+	logger, err := NewLogger(&cfg.Logger)
+	if err != nil {
+		log.Fatalln("Failed to listen:", err)
+
+	}
+
+	db, err := otelsql.Open(cfg.Database.Dialect, cfg.Database.DSN)
+	if err != nil {
+		log.Fatalln("Failed to open db:", err)
+	}
+
+	dbContext := reposql.NewDBContext(cfg.Database.Dialect, db)
+
+	repo := reposql.NewRepository(dbContext)
+
+	uc := usecase.NewUsecase(logger, repo)
+
+	svc := service.NewService(uc)
+
+	s := server.NewServer(logger, cfg, svc)
+
+	logger.Sugar().Fatal(s.Run())
+}

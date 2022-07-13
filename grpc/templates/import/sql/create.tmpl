@@ -1,0 +1,89 @@
+{{ $table := . }}
+
+func create{{ $table.Name | pascal }}(ctx context.Context, dialect string, execer domain.Execer, {{ $table.Name | camel }} *domain.{{ $table.Name | pascal }}, onConflict ...entsql.ConflictOption) (*domain.{{ $table.Name | pascal }}, error) {
+	var err error
+	creator := Create(dialect, execer, &domain.{{ $table.Name | pascal }}{}, onConflict...)
+	{{ $table.Name | camel }}, err = creator.Save(ctx, {{ $table.Name | camel }})
+
+	if err != nil {
+		return nil, err
+	}
+
+    {{- if $table.HasRelations }}
+        {{ $table.Name | camel }}, err = mutate{{ $table.Name | pascal }}Relations(ctx, dialect, execer, {{ $table.Name | camel }})
+        if err != nil {
+            return nil, err
+        }
+    {{- end }}
+
+	return {{ $table.Name | camel }}, nil
+}
+
+func (r *sqlRepository) Create{{ $table.Name | pascal }}(ctx context.Context, {{ $table.Name | camel }} *domain.{{ $table.Name | pascal }}) (*domain.{{ $table.Name | pascal }}, error) {
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	{{ $table.Name | camel }}, err = create{{ $table.Name | pascal }}(ctx, r.Dialect(), tx, {{ $table.Name | camel }})
+	if err != nil {
+		return nil, err
+	}
+	tx.Commit()
+	return {{ $table.Name | camel }}, nil
+}
+
+func batchCreate{{ $table.Name | pascal | plural }}(ctx context.Context, dialect string, execer domain.Execer, {{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}, onConflict ...entsql.ConflictOption) ([]*domain.{{ $table.Name | pascal }}, error) {
+	if len({{ $table.Name | camel | plural }}) == 0 {
+		return {{ $table.Name | camel | plural }}, nil
+	}
+	var err error
+	creator := Create(dialect, execer, &domain.{{ $table.Name | pascal }}{}, onConflict...)
+	{{ $table.Name | camel | plural }}, err = creator.BatchSave(ctx, {{ $table.Name | camel | plural }})
+
+	if err != nil {
+		return nil, err
+	}
+
+    {{- if $table.HasRelations }}
+        {{ $table.Name | camel | plural }}, err = batchMutate{{ $table.Name | pascal }}Relations(ctx, dialect, execer, {{ $table.Name | camel | plural }})
+        if err != nil {
+            return nil, err
+        }
+    {{- end }}
+
+	return {{ $table.Name | camel | plural }}, nil
+}
+
+func (r *sqlRepository) BatchCreate{{ $table.Name | pascal | plural }}(ctx context.Context, {{ $table.Name | camel | plural }} []*domain.{{ $table.Name | pascal }}) ([]*domain.{{ $table.Name | pascal }}, error) {
+	var err error
+	tx, err := r.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	{{ $table.Name | camel | plural }}, err = batchCreate{{ $table.Name | pascal | plural }}(ctx, r.Dialect(), tx, {{ $table.Name | camel | plural }})
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	tx.Commit()
+
+	return {{ $table.Name | camel | plural }}, nil
+}

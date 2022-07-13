@@ -1,0 +1,30 @@
+{{ $g := .Generator }}
+
+{{ $g.Template "import/header.tmpl" $g.Cfg.Header }}
+package sql
+
+import (
+	"database/sql"
+
+	"{{ .Package }}/repository"
+)
+
+type dbContext struct {
+	dialect string
+	db      *sql.DB
+}
+
+func NewDBContext(dialect string, db *sql.DB) repository.DBContext {
+	return &dbContext{
+		dialect: dialect,
+		db:      db,
+	}
+}
+
+func (c *dbContext) Dialect() string {
+	return c.dialect
+}
+
+func (c *dbContext) DB() *sql.DB {
+	return c.db
+}

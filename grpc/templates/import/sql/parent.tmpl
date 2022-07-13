@@ -1,0 +1,41 @@
+{{ $table := . }}
+{{- if $table.HasParent }}
+    func apply{{ $table.Name | pascal }}Parent(ctx context.Context, dialect string, querier domain.Querier, parent string, parentName string) (*entsql.Predicate, error) {
+        if parent == "" || parentName == "" {
+            return nil, nil
+        }
+
+        switch parent {
+        {{- range $f := .Fields}}
+            {{- if $f.RelBelongsTo }}
+                case "{{ $f.Name | camel | plural }}":
+                    return entsql.EQ("{{ $f.Rel.RefField.Name }}", parentName), nil
+            {{- end}}
+            {{- if $f.RelManyToMany }}
+                case "{{ $f.Name | camel | plural }}":
+                    {{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} := make([]any, 0)
+                    query, args := entsql.Dialect(dialect).Select("{{ $f.Rel.JoinTable.JoinField.Name }}").From(entsql.Table("{{ $f.Rel.JoinTable.Name }}")).Where(entsql.EQ("{{ $f.Rel.JoinTable.JoinRefField.Name }}", parentName)).Query()
+                    rows, err := querier.QueryContext(ctx, query, args...)
+                    if err != nil {
+                        return nil, err
+                    }
+                    defer rows.Close()
+
+                    for rows.Next() {
+                        var {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}
+                        err = rows.Scan(&{{ $f.Rel.JoinTable.JoinField.Name | camel }})
+                        if err != nil {
+                            return nil, err
+                        }
+
+                        {{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} = append({{ $f.Rel.JoinTable.JoinField.Name | camel | plural }}, {{ $f.Rel.JoinTable.JoinField.Name | camel }})
+                    }
+                    return entsql.In("{{ $f.Rel.Field.Name }}", {{ $f.Rel.JoinTable.JoinField.Name | camel | plural }}...), nil
+            {{- end}}
+        {{- end}}
+        default:
+            return nil, status.Errorf(codes.InvalidArgument, "Unsupported parent resource name: %s", parent)
+        }
+
+    }
+{{- end}}
