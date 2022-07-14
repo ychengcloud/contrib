@@ -1,0 +1,91 @@
+templates:
+  - path: "proto/v1/api.proto.tmpl"
+    genPath: "proto/v1"
+    format: "api.proto"
+    mode: "single"
+
+  - path: "go.mod.tmpl"
+    genPath: "./"
+    format: "go.mod"
+
+  - path: "buf.gen.yaml.tmpl"
+    genPath: "./"
+    format: "buf.gen.yaml"
+
+  - path: "cmd/main.go.tmpl"
+    genPath: "cmd"
+    format: "main.go"
+
+  - path: "cmd/injector.go.tmpl"
+    genPath: "cmd"
+    format: "injector.go"
+
+  - path: "domain/domain.go.tmpl"
+    genPath: "domain"
+    format: "domain.go"
+    
+  - path: "domain/entity.go.tmpl"
+    genPath: "domain"
+    format: "{{.Table}}.go"
+    mode: "multi"
+
+  - path: "repository/repository.go.tmpl"
+    genPath: "repository"
+    format: "repository.go"
+
+  - path: "repository/repository_test.go.tmpl"
+    genPath: "repository"
+    format: "repository_test.go"
+
+  - path: "repository/sql/repository.go.tmpl"
+    genPath: "repository/sql"
+    format: "repository.go"
+
+  - path: "repository/sql/driver.go.tmpl"
+    genPath: "repository/sql"
+    format: "driver.go"
+
+  - path: "repository/sql/db_context.go.tmpl"
+    genPath: "repository/sql"
+    format: "db_context.go"
+
+  - path: "repository/sql/gen.go.tmpl"
+    genPath: "repository/sql"
+    format: "{{.Table}}.go"
+    mode: "multi"
+
+  - path: "repository/sql/test/repository.go.tmpl"
+    genPath: "repository/sql/test"
+    format: "repository.go"
+
+  - path: "repository/sql/test/entity.go.tmpl"
+    genPath: "repository/sql/test"
+    format: "entity.go"
+
+  - path: "repository/sql/test/repository_test.go.tmpl"
+    genPath: "repository/sql/test"
+    format: "repository_test.go"
+
+  - path: "server/server.go.tmpl"
+    genPath: "server"
+    format: "server.go"
+
+  - path: "service/service.go.tmpl"
+    genPath: "service"
+    format: "service.go"
+
+  - path: "service/gen.go.tmpl"
+    genPath: "service"
+    format: "{{.Table}}.go"
+    mode: "multi"
+
+  - path: "usecase/usecase.go.tmpl"
+    genPath: "usecase"
+    format: "usecase.go"
+    mode: "multi"
+
+  - path: "usecase/gen.go.tmpl"
+    genPath: "usecase"
+    format: "{{.Table}}.go"
+    mode: "multi"
+

@@ -1,0 +1,69 @@
+# 项目名称
+project: <project>
+
+# 项目包名, GoLang 项目中用于设置 go.mod 的 module 
+package: "<package>"
+
+# 数据库类型, eg: mysql
+dialect: "<dialect>"
+
+# 数据库连接, eg: root:@tcp(127.0.0.1:3306)/<db>?charset=utf8mb4
+dsn: "root:@tcp(127.0.0.1:3306)/<db>?charset=utf8mb4"
+
+# 模板根路径
+root: "$HOME/.cre/contrib/grpc/templates"
+
+# 模板生成根路径
+genRoot: "./"
+
+# 其他属性，多用于扩展， eg: 设置 protobuf 包名
+attrs:
+  # protobuf 包名
+  protoPkg: "<protoPkg>"
+  
+tables:
+  - name: "category"
+  - name: "post"
+    fields:
+      - name: "id"
+        filterable: true
+        operations: ["Eq", "In"]
+      - name: "category"
+        relation:
+          name: "Category"
+          type: "manyToMany"
+          ref_table: "category"
+          join_table:
+            name: "post_category"
+
+      - name: "tag"
+        relation:
+          name: "Tag"
+          type: "manyToMany"
+          ref_table: "tag"
+          join_table:
+            name: "post_tag"
+
+      - name: "comment"
+        relation:
+          name: "Comment"
+          type: "hasMany"
+          ref_table: "comment"
+
+      - name: "meta"
+        relation:
+          name: "Meta"
+          type: "hasMany"
+          ref_table: "meta"
+
+  - name: "comment"
+    relation:
+      name: "Post"
+      type: "BelongsTo"
+      ref_table: "post"
+
+  - name: "meta"
+    relation:
+      name: "Post"
+      type: "BelongsTo"
+      ref_table: "post"
