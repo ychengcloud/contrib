@@ -20,7 +20,7 @@
                 }
 
                 {{ $f.Name | camel }}Query := Query(dialect, querier, &domain.{{ $f.Rel.RefTable.Name | pascal }}{})
-                {{ $f.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $table.ID.Name | camel | plural }}...))
+                {{ $f.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $f.Rel.Field.Name | camel | plural }}...))
                 if err != nil {
                     return nil, err
                 }
