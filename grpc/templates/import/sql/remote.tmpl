@@ -1,0 +1,14 @@
+{{ $table := . }}
+
+{{- if $table.HasRelations }}
+    {{- range $f := .Fields}}
+        {{- if $f.RelManyToMany }}
+            {{- if $f.Remote }}
+                func (r *sqlRepository) List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, orderBy string, pageSize int32, pageToken string) ({{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}, nextToken string, err error) {
+	                joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+	                return ListManyToManyRelation[{{ $f.Rel.JoinTable.JoinField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}](ctx, r.Dialect(), r.DB(), joinTable, {{ $f.Rel.JoinTable.JoinField.Name | camel }}, orderBy, pageSize, pageToken)
+                }
+            {{- end }}
+        {{- end }}
+    {{- end }}
+{{- end }}

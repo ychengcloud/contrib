@@ -62,6 +62,26 @@ func (p *post) Valid() error {
 	return nil
 }
 
+type postOpIdInput struct {
+	Eq *int64  `json:"eq,omitempty"`
+	In []int64 `json:"in,omitempty"`
+}
+
+type postOpTitleInput struct {
+	Eq         *string `json:"eq,omitempty"`
+	Contains   *string `json:"contains,omitempty"`
+	StartsWith *string `json:"starts_with,omitempty"`
+	EndsWith   *string `json:"ends_with,omitempty"`
+}
+
+type postFilterInput struct {
+	NOT   *postFilterInput   `json:"NOT,omitempty"`
+	AND   []*postFilterInput `json:"AND,omitempty"`
+	OR    []*postFilterInput `json:"OR,omitempty"`
+	Id    *postOpIdInput     `json:"id,omitempty"`
+	Title *postOpTitleInput  `json:"title,omitempty"`
+}
+
 type tag struct {
 	node
 	Id        int64
@@ -147,6 +167,32 @@ func (m *meta) Fields() ([]string, []any) {
 }
 
 func (m *meta) Valid() error {
+	return nil
+}
+
+// Remote many to many relationship
+type category struct {
+	node
+	Title     string
+	MetaTitle string
+	Slug      string
+	Content   string
+}
+
+func (c *category) New() domain.Entity {
+	return &category{}
+}
+
+//TableName
+func (c *category) TableName() string {
+	return "category"
+}
+
+func (c *category) Fields() ([]string, []any) {
+	return []string{"id", "title", "meta_title", "slug", "content"}, []any{&c.node.Id, &c.Title, &c.MetaTitle, &c.Slug, &c.Content}
+}
+
+func (c *category) Valid() error {
 	return nil
 }
 

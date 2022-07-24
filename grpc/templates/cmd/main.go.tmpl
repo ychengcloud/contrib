@@ -28,7 +28,7 @@ var configFile = flag.String("c", "config", "set config file")
 func main() {
 	flag.Parse()
 
-	cfg, err := config.New(*configFile, strings.ToUpper("fuxi_"))
+	cfg, err := config.New(*configFile, strings.ToUpper("{{ .Project }}_"))
 	if err != nil {
 		log.Fatalln("Failed to listen:", err)
 

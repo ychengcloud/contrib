@@ -292,5 +292,25 @@ func (s *Service) BatchDelete{{ $table.Name | pascal | plural }}(ctx context.Con
 			}
 			return &emptypb.Empty{}, nil
 		}
+		
+		{{- if $f.Remote }}
+			func (s *Service) List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(ctx context.Context, req *pb.List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Request) (*pb.List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Response, error) {
+				if req == nil {
+					return nil, status.Errorf(codes.InvalidArgument, "invalid argument: {{ $id.Name | camel }} is not provided")
+				}
+
+				pb{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}, nextPageToken, err := s.us.List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(ctx, req.{{ $f.Rel.JoinTable.JoinField.Name | pascal }}, req.OrderBy, req.PageSize, req.PageToken)
+
+				if err != nil {
+					return nil, err
+				}
+
+				var resp pb.List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Response
+				resp.{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }} = pb{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}
+				resp.NextPageToken = nextPageToken
+
+				return &resp, nil
+			}
+		{{- end }}
 	{{- end}}
 {{- end}}

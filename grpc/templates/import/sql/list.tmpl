@@ -20,14 +20,14 @@
                 }
 
                 {{ $f.Name | camel }}Query := Query(dialect, querier, &domain.{{ $f.Rel.RefTable.Name | pascal }}{})
-                {{ $f.Rel.RefTable.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $table.ID.Name | camel | plural }}...))
+                {{ $f.Name | camel | plural }}, err := {{ $f.Name | camel }}Query.Find(ctx, entsql.In("{{ $f.Rel.RefField.Name }}", {{ $table.ID.Name | camel | plural }}...))
                 if err != nil {
                     return nil, err
                 }
                 for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
-                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $f.Rel.RefTable.Name | camel | plural }} {
-                        if {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} == {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} {
-                            {{ $table.Name | camel }}.{{ $f.Name | pascal }} = {{ $f.Rel.RefTable.Name | camel }}
+                    for _, {{ $f.Name | camel }} := range {{ $f.Name | camel | plural }} {
+                        if {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} == {{ $f.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} {
+                            {{ $table.Name | camel }}.{{ $f.Name | pascal }} = {{ $f.Name | camel }}
                         }
                     }
                 }
@@ -40,9 +40,9 @@
                     return nil, err
                 }
                 for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
-                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $f.Rel.RefTable.Name | camel | plural }} {
-                        if {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} == {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} {
-                            {{ $table.Name | camel }}.{{ $f.Rel.RefTable.Name | pascal | plural }} = {{ $f.Rel.RefTable.Name | camel }}
+                    for _, {{ $f.Name | camel }} := range {{ $f.Name | camel | plural }} {
+                        if {{ $f.Name | camel }}.{{ $f.Rel.RefField.Name | pascal }} == {{ $table.Name | camel }}.{{ $f.Rel.Field.Name | pascal }} {
+                            {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} = {{ $f.Name | camel }}
                         }
                     }
                 }
@@ -65,18 +65,20 @@
             {{- end}}
 
             {{- if $f.RelManyToMany }}
-                {{ $f.Rel.RefTable.Name | camel }}JoinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-                err = LoadManyToManyRelation(ctx, dialect, querier, {{ $f.Rel.RefTable.Name | camel }}JoinTable, {{ $table.Name | camel | plural }}, func({{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} []any, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []any, {{ $table.Name | camel }}Set map[any]*domain.{{ $table.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}Set map[any]*domain.{{ $f.Rel.RefTable.Name | pascal }}) error {
-                    for i := range {{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} {
-                        if {{ $table.Name | camel }}, ok := {{ $table.Name | camel }}Set[{{ $f.Rel.JoinTable.JoinField.Name | camel | plural }}[i]]; ok {
-                            {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} = append({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}, {{ $f.Rel.RefTable.Name | camel }}Set[{{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }}[i]])
+                {{- if not $f.Remote }}
+                    {{ $f.Rel.RefTable.Name | camel }}JoinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+                    err = LoadManyToManyRelation(ctx, dialect, querier, {{ $f.Rel.RefTable.Name | camel }}JoinTable, {{ $table.Name | camel | plural }}, func({{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} []any, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []any, {{ $table.Name | camel }}Set map[any]*domain.{{ $table.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}Set map[any]*domain.{{ $f.Rel.RefTable.Name | pascal }}) error {
+                        for i := range {{ $f.Rel.JoinTable.JoinField.Name | camel | plural }} {
+                            if {{ $table.Name | camel }}, ok := {{ $table.Name | camel }}Set[{{ $f.Rel.JoinTable.JoinField.Name | camel | plural }}[i]]; ok {
+                                {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} = append({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}, {{ $f.Rel.RefTable.Name | camel }}Set[{{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }}[i]])
+                            }
                         }
+                        return nil
+                    })
+                    if err != nil {
+                        return nil, err
                     }
-                    return nil
-                })
-                if err != nil {
-                    return nil, err
-                }
+                {{- end}}
             {{- end}}
         {{- end}}
 

@@ -1,14 +1,20 @@
 app:
   name: 
   # 运行模式 1. debug 2. release， 默认 release
-  mode: debug
+  mode: release
   # 是否能访问Api文档, 默认 false
   doc: true
-  # 绑定 IP
-  host: 127.0.0.1
-  # 绑定 Port
-  port: 7779
+  xds: false
 
+server:
+  http:
+    network: tcp 
+    addr: 0.0.0.0:80
+    timeout: 5
+  grpc:
+    network: tcp 
+    addr: 0.0.0.0:9031
+    timeout: 5
 
 db:
   dialect: mysql

@@ -23,6 +23,48 @@ func NewRepository(dbContext repository.DBContext) repository.Repository {
 	}
 }
 
+func ListManyToManyRelation[T any, R any](ctx context.Context, dialect string, querier domain.Querier, joinTable *domain.JoinTable, key T, orderBy string, pageSize int32, pageToken string) (refKeys []R, nextToken string, err error) {
+	if joinTable == nil {
+		err = fmt.Errorf("relation JoinTable must be set")
+		return
+	}
+
+	if joinTable.Field == "" || joinTable.RefField == "" {
+		err = fmt.Errorf("relation JoinTable field and ref field must be set")
+		return
+	}
+
+	selector := entsql.Dialect(dialect).
+		Select(joinTable.RefField).From(entsql.Table(joinTable.Name)).
+		Where(entsql.EQ(joinTable.Field, key))
+
+	limit, offset, err := applyConditions(selector, orderBy, pageSize, pageToken)
+	if err != nil {
+		return
+	}
+
+	query, args := selector.Query()
+	rows, err := querier.QueryContext(ctx, query, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var refKey R
+		if err = rows.Scan(&refKey); err != nil {
+			return
+		}
+		refKeys = append(refKeys, refKey)
+	}
+
+	if len(refKeys) > limit {
+		nextToken = strconv.Itoa(offset + limit)
+		refKeys = refKeys[:limit]
+	}
+	return
+}
+
 func AddManyToManyRelation(ctx context.Context, dialect string, execer domain.Execer, joinTable *domain.JoinTable, values [][]any) error {
 	if joinTable == nil {
 		return fmt.Errorf("relation JoinTable must be set")
@@ -112,7 +154,7 @@ func LoadManyToManyRelation[T domain.Entity, R domain.Entity](ctx context.Contex
 	if len(refIds) == 0 {
 		return nil
 	}
-	
+
 	var refEntity R
 	refEntity, err = New[R]()
 	if err != nil {

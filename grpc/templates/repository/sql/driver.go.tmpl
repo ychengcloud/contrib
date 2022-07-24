@@ -40,7 +40,7 @@ func New[T domain.Entity]() (T, error) {
 	return e, nil
 }
 
-func (q *querier[T]) List(ctx context.Context, preds *entsql.Predicate, orderBy string, pageSize int32, pageToken string) (entities []T, nextToken string, err error) {
+func (q *querier[T]) find(ctx context.Context, selector *entsql.Selector) (entities []T, err error) {
 	db := q.querier
 
 	var entity T
@@ -49,22 +49,10 @@ func (q *querier[T]) List(ctx context.Context, preds *entsql.Predicate, orderBy 
 		return
 	}
 
-	selector := entsql.Dialect(q.dialect).Select().From(entsql.Table((entity.TableName())))
-	entities = make([]T, 0)
-
-	if preds != nil {
-		selector.Where(preds)
-	}
-
-	limit, offset, err := applyConditions(selector, orderBy, pageSize, pageToken)
-	if err != nil {
-		return
-	}
-
 	query, args := selector.Query()
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -83,6 +71,32 @@ func (q *querier[T]) List(ctx context.Context, preds *entsql.Predicate, orderBy 
 		entities = append(entities, entity)
 	}
 	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return
+}
+
+func (q *querier[T]) List(ctx context.Context, preds *entsql.Predicate, orderBy string, pageSize int32, pageToken string) (entities []T, nextToken string, err error) {
+	var entity T
+	entity, err = New[T]()
+	if err != nil {
+		return
+	}
+
+	selector := entsql.Dialect(q.dialect).Select().From(entsql.Table((entity.TableName())))
+
+	if preds != nil {
+		selector.Where(preds)
+	}
+
+	limit, offset, err := applyConditions(selector, orderBy, pageSize, pageToken)
+	if err != nil {
+		return
+	}
+
+	entities, err = q.find(ctx, selector)
+	if err != nil {
 		return
 	}
 
@@ -95,47 +109,17 @@ func (q *querier[T]) List(ctx context.Context, preds *entsql.Predicate, orderBy 
 }
 
 func (q *querier[T]) Find(ctx context.Context, preds *entsql.Predicate) (entities []T, err error) {
-	db := q.querier
-
 	var entity T
 	entity, err = New[T]()
 	if err != nil {
 		return
 	}
 
-	entities = make([]T, 0)
 	selector := entsql.Dialect(q.dialect).
 		Select().From(entsql.Table(entity.TableName())).
 		Where(preds)
 
-	query, args := selector.Query()
-	if err != nil {
-		return nil, err
-	}
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		entity, err = New[T]()
-		if err != nil {
-			return
-		}
-
-		_, v := entity.Fields()
-		err = rows.Scan(v...)
-		if err != nil {
-			return
-		}
-
-		entities = append(entities, entity)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return
+	return q.find(ctx, selector)
 }
 
 func applyConditions(selector *entsql.Selector, orderBy string, count int32, token string) (limit, offset int, err error) {

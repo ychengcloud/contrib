@@ -22,7 +22,7 @@ type {{ $table.Name | pascal }} struct {
 	{{- if $table.AutoIncrement }}
 		Node
 	{{- else }}
-		{{ $table.ID.Name | pascal }} {{ $table.ID.Type.Kind }} ` + "`" + `json:"id"` + "`" + `
+		{{ $table.ID.Name | pascal }} {{ $table.ID.Type.Kind }} `json:"{{ $table.ID.Name | camel }}"`
 	{{- end }}
 
 	{{ $g.Template "import/fields.tmpl" .Fields }}
@@ -48,7 +48,7 @@ func ({{ $receiver }} *{{ $table.Name | pascal }}) Fields() ([]string, []any) {
 	}, []any{
 		{{- range $f := .Fields}}
 			{{- if $f.RelNone }}
-				{{- if $f.PrimaryKey }}
+				{{- if $f.AutoIncrement }}
 					&{{ $receiver }}.Node.Id,
 				{{- else }}
 					&{{ $receiver }}.{{ $f.Name | pascal }},

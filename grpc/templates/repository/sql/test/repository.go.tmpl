@@ -532,24 +532,10 @@ func (r *testRepository) BatchDeletePost(ctx context.Context, ids []int64) error
 	return nil
 }
 
-type postOpIdInput struct {
-	Eq *int64  `json:"eq,omitempty"`
-	In []int64 `json:"in,omitempty"`
-}
+func (r *testRepository) ListCategoryIdsWithPostId(ctx context.Context, key int64, orderBy string, pageSize int32, pageToken string) (refKeys []int64, nextToken string, err error) {
 
-type postOpTitleInput struct {
-	Eq         *string `json:"eq,omitempty"`
-	Contains   *string `json:"contains,omitempty"`
-	StartsWith *string `json:"starts_with,omitempty"`
-	EndsWith   *string `json:"ends_with,omitempty"`
-}
-
-type postFilterInput struct {
-	NOT   *postFilterInput   `json:"NOT,omitempty"`
-	AND   []*postFilterInput `json:"AND,omitempty"`
-	OR    []*postFilterInput `json:"OR,omitempty"`
-	Id    *postOpIdInput     `json:"id,omitempty"`
-	Title *postOpTitleInput  `json:"title,omitempty"`
+	joinTable := &domain.JoinTable{Name: "post_category", Field: "post_id", RefField: "category_id"}
+	return sql.ListManyToManyRelation[int64, int64](ctx, r.Dialect(), r.DB(), joinTable, key, orderBy, pageSize, pageToken)
 }
 
 func applyPostFilter(ctx context.Context, filterInput *postFilterInput) *entsql.Predicate {

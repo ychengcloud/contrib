@@ -28,9 +28,7 @@ const (
 )
 
 func (s *server) newGrpcServer() (func() error, *grpc.Server, error) {
-	addr := net.JoinHostPort(s.cfg.App.Host, s.cfg.App.Port)
-
-	l, err := net.Listen("tcp", addr)
+	l, err := net.Listen(s.cfg.Server.GRPC.Network, s.cfg.Server.GRPC.Addr)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "net.Listen")
 	}
@@ -86,7 +84,7 @@ func (s *server) newGrpcServer() (func() error, *grpc.Server, error) {
 	}
 
 	go func() {
-		s.log.Sugar().Infof("gRPC server is listening on port: %s", addr)
+		s.log.Sugar().Infof("gRPC server is listening on: %s", s.cfg.Server.GRPC.Addr)
 		s.log.Sugar().Fatal(grpcServer.Serve(l))
 	}()
 

@@ -49,6 +49,10 @@ type Repository interface {
 
 			{{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind}} )  error 
 		{{- end}}
+
+		{{- if $f.Remote }}
+			List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, orderBy string, pageSize int32, pageToken string) ({{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}, nextToken string, err error)
+		{{- end }}
 	{{- end}}
 {{- end}}
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/viper"
 	jagercfg "github.com/uber/jaeger-client-go/config"
@@ -56,13 +57,29 @@ type AppConfig struct {
 	Name string
 	// 运行模式 1. debug 2. release， 默认 release
 	Mode string
+	// 是否开启xDS支持
+	XDS bool
 	//是否能访问Api文档, 默认 false
 	Doc bool
-	//绑定 IP
-	Host string `yaml:"host" mapstructure:"host"`
-	//绑定 Port
-	Port string `yaml:"host" mapstructure:"port"`
 }
+
+type ServerConfig struct {
+	HTTP *HttpServerConfig `yaml:"http"`
+	GRPC *GrpcServerConfig `yaml:"grpc"`
+}
+
+type HttpServerConfig struct {
+	Network string         `yaml:"network"`
+	Addr    string         `yaml:"addr"`
+	Timeout *time.Duration `yaml:"timeout"`
+}
+
+type GrpcServerConfig struct {
+	Network string         `yaml:"network"`
+	Addr    string         `yaml:"addr"`
+	Timeout *time.Duration `yaml:"timeout"`
+}
+
 type Config struct {
 	Path       string           `yaml:"-" mapstructure:"-"`
 	App        AppConfig        `yaml:"app" mapstructure:"app"`
@@ -72,6 +89,7 @@ type Config struct {
 	Probes     ProbesConfig     `yaml:"probes" mapstructure:"probes"`
 	Prometheus PrometheusConfig `yaml:"prometheus" mapstructure:"prometheus"`
 	Tracing    TracingConfig    `yaml:"tracing" mapstructure:"tracing"`
+	Server     ServerConfig     `yaml:"server"`
 }
 
 // Init 初始化viper

@@ -45,6 +45,29 @@ service {{ .Project | pascal }}Service {
                 }
             {{- end}}
         {{- end}}
+
+        {{- if $f.RelManyToMany }}
+            rpc {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}({{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
+                option (google.api.http) = {
+                    post: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Name | camel | plural}}:assign"
+                    body: "*"
+                };
+            }
+
+            rpc {{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}({{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
+                option (google.api.http) = {
+                    post: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Name | camel | plural}}:unassign"
+                    body: "*"
+                };
+            }
+            {{- if $f.Remote }}
+                rpc List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Request) returns (List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Response) {
+                    option (google.api.http) = {
+                        get: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }}"
+                    };
+                }
+            {{- end }}
+        {{- end}}
     {{- end}}
 
     rpc Create{{ $table.Name | pascal }}(Create{{ $table.Name | pascal }}Request) returns ({{ $table.Name | pascal }}) {
@@ -87,24 +110,6 @@ service {{ .Project | pascal }}Service {
             body: "*"
         };
     }
-
-    {{- range $f := .Fields}}
-        {{- if $f.RelManyToMany }}
-            rpc {{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}({{ $table.Name | pascal | plural }}AssignWith{{ $f.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
-            option (google.api.http) = {
-                post: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Name | camel | plural}}:assign"
-                body: "*"
-            };
-            }
-
-            rpc {{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}({{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}Request) returns (google.protobuf.Empty) {
-            option (google.api.http) = {
-                post: "/api/v1/{{ $table.Name | camel | plural }}/{ {{- $f.Rel.JoinTable.JoinField.Name | snake -}} }/{{ $f.Name | camel | plural}}:unassign"
-                body: "*"
-            };
-            }
-        {{- end}}
-    {{- end}}
 
 {{- end}}
 }
@@ -288,13 +293,41 @@ service {{ .Project | pascal }}Service {
                 // The resource id of the {{ $f.Name | pascal | plural}} to be deleted.
                 {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
                 repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 2;
-                }
+            }
 
-                message {{ $table.Name | pascal | plural }}UnassignWith{{ .Name | pascal | plural }}Request{
+            message {{ $table.Name | pascal | plural }}UnassignWith{{ .Name | pascal | plural }}Request{
                     // The resource id of the {{ $f.Name | pascal | plural}} to be deleted.
                 {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
                 repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 2;
             }
+
+            {{- if $f.Remote }}
+                message List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Request{
+                    {{ $f.Rel.JoinTable.JoinField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinField.Name | snake }} = 1;
+                    
+                    // The maximum number of items to return.
+                    int32 page_size = 2;
+
+                    // The next_page_token value returned from a previous List request, if any.
+                    string page_token = 3;
+
+                    // The string value should follow SQL syntax: comma separated list of fields.
+                    // For example: "foo,bar". The default sorting order is ascending. To specify
+                    // descending order for a field, a suffix " desc" should be appended to the
+                    // field name. For example: "foo desc,bar". Redundant space characters in the
+                    // syntax are insignificant. "foo,bar desc" and "  foo ,  bar  desc  " are
+                    // equivalent.
+                    string order_by = 4;
+                }
+
+                message List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}Response{
+                    repeated {{ $f.Rel.JoinTable.JoinRefField.Type.ProtobufKind }} {{ $f.Rel.JoinTable.JoinRefField.Name | plural | snake }} = 1;
+
+                    // Token to retrieve the next page of results, or empty if there are no more
+                    // results in the list.
+                    string next_page_token = 2;
+                }
+            {{- end}}
         {{- end}}
     {{- end}}
 

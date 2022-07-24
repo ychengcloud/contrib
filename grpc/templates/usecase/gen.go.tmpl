@@ -68,5 +68,10 @@ func (us *Usecase) BatchDelete{{ $table.Name | pascal | plural }}(ctx context.Co
 		func (us *Usecase) {{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind}} ) error {
             return us.repo.{{ $table.Name | pascal | plural }}UnassignWith{{ $f.Name | pascal | plural }}(ctx, {{ $f.Rel.JoinTable.JoinField.Name | camel }}, {{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }})
 		}
+		{{- if $f.Remote }}
+			func (us *Usecase) List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(ctx context.Context, {{ $f.Rel.JoinTable.JoinField.Name | camel }} {{ $f.Rel.JoinTable.JoinField.Type.Kind }}, orderBy string, pageSize int32, pageToken string) ({{ $f.Rel.JoinTable.JoinRefField.Name | camel | plural }} []{{ $f.Rel.JoinTable.JoinRefField.Type.Kind }}, nextToken string, err error) {
+				return us.repo.List{{ $f.Rel.JoinTable.JoinRefField.Name | pascal | plural }}With{{ $f.Rel.JoinTable.JoinField.Name | pascal }}(ctx, {{ $f.Rel.JoinTable.JoinField.Name | camel }}, orderBy, pageSize, pageToken)
+			}
+		{{- end }}
 	{{- end}}
 {{- end}}

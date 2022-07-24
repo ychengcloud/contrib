@@ -7,8 +7,8 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
-	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,7 +16,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"{{ .Package }}/domain"
 	"{{ .Package }}/repository/sql"
 )
 
@@ -1175,6 +1174,66 @@ func TestLoadRelationsBelongsTo(t *testing.T) {
 			r.NoError(err)
 			r.NoError(mock.ExpectationsWereMet())
 			r.EqualValues(test.models, comments)
+
+		})
+	}
+}
+
+func TestRemoteList(t *testing.T) {
+	r := require.New(t)
+	db, mock, err := sqlmock.New()
+	r.NoError(err)
+	defer db.Close()
+
+	dbctx := sql.NewDBContext("mysql", db)
+	tests := []struct {
+		name      string
+		key       int64
+		refKeys   []int64
+		orderBy   string
+		pageSize  int32
+		pageToken string
+		before    func(mock sqlmock.Sqlmock, key int64, orderBy string, limit int, offset int, refKeys []int64)
+		wantErr   bool
+	}{
+		{
+			name:      "list remote relationship",
+			key:       1,
+			refKeys:   []int64{1, 2, 3, 4},
+			orderBy:   "id",
+			pageSize:  2,
+			pageToken: "2",
+			before: func(mock sqlmock.Sqlmock, key int64, orderBy string, limit int, offset int, refKeys []int64) {
+				query := fmt.Sprintf("SELECT `category_id` FROM `post_category` WHERE `post_id` = ? ORDER BY `%s` LIMIT %d OFFSET %d", orderBy, limit+1, offset)
+				mock.ExpectQuery(escape(query)).WithArgs(key).WillReturnRows(
+					sqlmock.NewRows([]string{"category_id"}).AddRow(refKeys[1]).AddRow(refKeys[2]).AddRow(refKeys[3]),
+				)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			offset := 0
+			if t := strings.TrimSpace(test.pageToken); t != "" {
+				offset, err = strconv.Atoi(t)
+				r.NoError(err)
+
+			}
+
+			test.before(mock, test.key, test.orderBy, int(test.pageSize), offset, test.refKeys)
+			repo := NewTestRepository(dbctx)
+			r.NotNil(repo)
+
+			ctx := context.Background()
+			refKeys, nextToken, err := repo.ListCategoryIdsWithPostId(ctx, test.key, test.orderBy, test.pageSize, test.pageToken)
+			r.NoError(err)
+			r.NoError(mock.ExpectationsWereMet())
+
+			r.Equal(strconv.Itoa(int(test.refKeys[3])), nextToken)
+			r.Equal(2, len(refKeys))
+			r.Equal(refKeys[0], test.refKeys[1])
+			r.Equal(refKeys[1], test.refKeys[2])
 
 		})
 	}

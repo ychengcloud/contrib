@@ -10,8 +10,8 @@ func delete{{ $table.Name | pascal }}(ctx context.Context, dialect string, exece
 
     {{- range $f := .Fields}}
         {{- if $f.RelManyToMany }}
-			joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-			err = DeleteManyToManyRelation(ctx, dialect, execer, joinTable, entsql.EQ(joinTable.Field, id))
+			{{ $f.Name | camel }}JoinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+			err = DeleteManyToManyRelation(ctx, dialect, execer, {{ $f.Name | camel }}JoinTable, entsql.EQ({{ $f.Name | camel }}JoinTable.Field, id))
 			if err != nil {
 				return err
 			}
@@ -60,8 +60,8 @@ func batchDelete{{ $table.Name | pascal }}(ctx context.Context, dialect string, 
 
 	{{- range $f := .Fields}}
         {{- if $f.RelManyToMany }}
-			joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-			err = DeleteManyToManyRelation(ctx, dialect, execer, joinTable, entsql.In(joinTable.Field, values...))
+			{{ $f.Name | camel }}JoinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+			err = DeleteManyToManyRelation(ctx, dialect, execer, {{ $f.Name | camel }}JoinTable, entsql.In({{ $f.Name | camel }}JoinTable.Field, values...))
 			if err != nil {
 				return err
 			}

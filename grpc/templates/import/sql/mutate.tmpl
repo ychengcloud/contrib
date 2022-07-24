@@ -39,18 +39,20 @@
             {{- end}}
 
             {{- if $f.RelManyToMany }}
-                // Insert many to many relationship
-                if len({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}) > 0 {
-                    values := make([][]any, 0)
-                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
-                        values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }} })
+                {{- if not $f.Remote }}
+                    // Insert many to many relationship
+                    if len({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}) > 0 {
+                        values := make([][]any, 0)
+                        for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
+                            values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }} })
+                        }
+                        joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+                        err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+                        if err != nil {
+                            return nil, err
+                        }
                     }
-                    joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-                    err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
-                    if err != nil {
-                        return nil, err
-                    }
-                }
+                {{- end}}
             {{- end}}
         {{- end}}
 
@@ -116,21 +118,23 @@
             {{- end}}
 
             {{- if $f.RelManyToMany }}
-                // Insert many to many relationship
-                values := make([][]any, 0)
-                for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
-                    for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}  {
-                        values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }},{{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }}})
+                {{- if not $f.Remote }}
+                    // Insert many to many relationship
+                    values := make([][]any, 0)
+                    for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
+                        for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}  {
+                            values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }},{{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }}})
+                        }
                     }
-                }
 
-                if len(values) > 0 {
-                    joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-                    err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
-                    if err != nil {
-                        return nil, err
+                    if len(values) > 0 {
+                        joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
+                        err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+                        if err != nil {
+                            return nil, err
+                        }
                     }
-                }
+                {{- end}}
             {{- end}}
         {{- end}}
 
