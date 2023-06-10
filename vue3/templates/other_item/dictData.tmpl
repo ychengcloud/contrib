@@ -1,0 +1,19 @@
+@@- $content := "" -@@
+@@- $table := . -@@
+@@- $has := false -@@
+@@- range $table.Fields @@
+    @@- $f := . -@@
+    @@- if not .PrimaryKey @@
+        @@- $dictType := attrs .Attrs "dict_type" -@@
+        @@- if $dictType -@@
+            @@- $content = (printf "%s%s," $content $dictType.Value) -@@
+            @@- $has = true -@@
+        @@- end -@@
+    @@- end -@@
+@@- end -@@
+@@- if $has -@@
+// 获取字典数据
+const { dictData } = useDictData('@@- $content -@@')
+@@- else -@@
+const { dictData } = {}
+@@- end -@@

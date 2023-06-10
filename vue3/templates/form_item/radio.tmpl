@@ -1,0 +1,28 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $label := attrs $f.Attrs "label" -@@
+@@- $labelValue := $f.Comment -@@
+@@- if $label -@@
+    @@- $labelValue = $label.Value -@@
+@@- end -@@
+<el-form-item label="@@ $labelValue @@" prop="@@ $f.Name @@">
+    <el-radio-group v-model="formData.@@ $f.Name @@" placeholder="@@ $f.Comment @@">
+@@- if $f.RelNone -@@
+        <el-radio 
+            v-for="(item, index) in dictData.@@- $g.Template "other_item/dictTypeValue.tmpl" $f -@@"
+            :key="index"
+            :label="@@- $g.Template "other_item/itemValue.tmpl" $f -@@"
+        >
+            {{ item.name }}
+        </el-radio>
+@@- else @@
+        <el-radio 
+            v-for="item in optionsData.@@ $f.Rel.RefTable.Name @@"
+            :key="item.@@- $f.Rel.RefField.Name -@@"
+            :label="item.name"
+        >
+            {{ item.name }}
+        </el-radio>
+@@- end -@@
+    </el-radio-group>
+</el-form-item>

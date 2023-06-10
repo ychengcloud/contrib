@@ -1,0 +1,13 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $label := attrs $f.Attrs "label" -@@
+@@- $labelValue := $f.Comment -@@
+@@- if $label -@@
+    @@- $labelValue = $label.Value -@@
+@@- end -@@
+
+@@- if $f.RelNone -@@
+<el-table-column label="@@ $labelValue @@" prop="@@ $f.Name @@" show-overflow-tooltip />
+@@- else -@@
+<el-table-column label="@@ $labelValue @@" prop="@@ $f.Name @@.name" show-overflow-tooltip />
+@@- end -@@

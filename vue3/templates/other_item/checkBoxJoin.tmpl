@@ -1,0 +1,9 @@
+@@- $f := . -@@
+@@- if not .PrimaryKey @@
+@@- $viewType := attrs .Attrs "view_type" -@@
+@@- if $viewType -@@
+@@- if eq $viewType.Value "checkbox" -@@
+    @@- $f.Name -@@: formData.@@- $f.Name -@@.join(',')
+@@- end -@@
+@@- end -@@
+@@- end -@@

@@ -1,0 +1,8 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+<el-form-item label="@@ $f.Comment @@" prop="@@ $f.Name @@">
+    <daterange-picker
+        v-model:startTime="queryParams.start_time"
+        v-model:endTime="queryParams.end_time"
+    />
+</el-form-item>

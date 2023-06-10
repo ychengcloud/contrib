@@ -1,0 +1,5 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+<el-form-item label="@@ $f.Comment @@" prop="@@ $f.Name @@">
+    <el-input class="w-[280px]" v-model="queryParams.@@ $f.Name @@" clearable placeholder="请输入@@ $f.Comment @@" />
+</el-form-item>

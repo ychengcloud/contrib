@@ -1,0 +1,19 @@
+@@- $viewType := attrs .Attrs "view_type" -@@
+@@- $insert := attrs .Attrs "insert" -@@
+@@- $update := attrs .Attrs "update" -@@
+@@- $notinsert := eq (not $insert) (and $insert ($insert.Value "false")) -@@
+@@- $notupdate := and $update ($update.Value "false") -@@
+@@- if not .PrimaryKey -@@
+@@- if or $notinsert $notupdate -@@
+@@- else -@@
+    @@- if and $viewType (eq $viewType.Value "checkbox") -@@
+        @@- .Name -@@: [],
+    @@- else -@@
+        @@- if .RelNone -@@
+            @@- .Name -@@: '',
+        @@- else -@@
+            @@- .Name -@@: {} as any,
+        @@- end -@@
+    @@- end -@@
+@@- end -@@
+@@- end -@@

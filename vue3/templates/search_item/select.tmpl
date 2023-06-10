@@ -1,0 +1,23 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+<el-form-item label="@@ $f.Comment @@" prop="@@ $f.Name @@">
+    <el-select class="w-[280px]" v-model="queryParams.@@ $f.Name @@" clearable placeholder="请选择@@ $f.Comment @@">
+    @@- if $f.RelNone -@@
+        <el-option label="全部" value=""></el-option>
+        <el-option 
+            v-for="(item, index) in dictData.@@- $g.Template "other_item/dictTypeValue.tmpl" $f -@@"
+            :key="index" 
+            :label="item.name"
+            :value="item.value"
+        />
+    @@- else @@
+        <el-option label="全部" value ></el-option>
+        <el-option 
+            v-for="item in optionsData.@@ $f.Rel.RefTable.Name @@"
+            :key="item.@@- $f.Rel.RefField.Name -@@" 
+            :label="item.name"
+            :value="item.@@- $f.Rel.RefField.Name -@@"
+        />
+    @@- end -@@
+    </el-select>
+</el-form-item>

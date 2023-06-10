@@ -1,0 +1,32 @@
+@@- $g := .Generator -@@
+@@- $notInsert := ($g.Cfg.Attrs.notinsert) -@@
+@@- $notUpdate := ($g.Cfg.Attrs.notupdate) -@@
+
+@@- range .SortedFields @@
+    @@- $f := . -@@
+    @@- $show := attrs .Attrs "show" -@@
+    @@- $viewType := attrs .Attrs "view_type" -@@
+    @@- if not (has $f.Name $notInsert) -@@
+    @@- if not (has $f.Name $notUpdate) -@@
+        @@- if and (not $f.PrimaryKey) (not $f.ForeignKey) -@@
+        @@- if and ($show) (not $show.Value) @@
+        @@- else @@
+            @@- $viewTypeName := "input" -@@
+            @@- if $viewType @@
+                @@- $viewTypeName = $viewType.Value -@@
+            @@- else -@@
+                @@- if eq $f.Type.Kind "int" "int8" "int16" "int32" "int64" "uint" "uint8" "uint16" "uint32" "uint64" -@@
+                    @@- $viewTypeName = "number" -@@
+                @@- end @@
+                @@- if eq $f.Type.Kind "time.Time" -@@
+                    @@- $viewTypeName = "datetime" -@@
+                @@- end @@
+            @@- end @@
+            @@- $tplName := (printf "form_item/%s.tmpl" $viewTypeName) -@@
+            @@- $var := (dict "g" $g "field" $f) @@
+            @@ $g.Template $tplName $var @@
+        @@- end @@
+        @@- end @@
+    @@- end @@
+    @@- end @@
+@@- end @@

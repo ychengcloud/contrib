@@ -1,0 +1,34 @@
+@@- $g := .Generator -@@
+@@- $show := (attrs .Attrs "show") -@@
+@@- $showValue := list -@@
+@@- if $show @@
+    @@- $showValue = splitList "," $show.Value -@@
+@@- end @@
+@@- range .SortedFields @@
+    @@- $f := . -@@
+    @@- $showInField := attrs .Attrs "show" -@@
+    @@- $viewType := attrs .Attrs "view_type" -@@
+    @@- if and ($showInField) (not $showInField.Value) @@
+    @@- else @@
+        @@- if (has $f.Name $showValue) -@@
+            @@- $viewType := attrs $f.Attrs "view_type" -@@
+            @@- $var := (dict "g" $g "field" $f) @@
+            @@- if $viewType @@
+                @@- if (eq $viewType.Value "datetime") @@
+                    @@ $g.Template "table_item/datetime.tmpl" $var @@
+                @@- end @@
+                @@- if (eq $viewType.Value "image") @@
+                    @@ $g.Template "table_item/image.tmpl" $var @@
+                @@- end @@
+                @@- if (eq $viewType.Value "select" "radio") @@
+                    @@ $g.Template "table_item/options.tmpl" $var @@
+                @@- end @@
+                @@- if not (eq $viewType.Value "select" "datetime" "radio" "image") @@
+                    @@ $g.Template "table_item/default.tmpl" $var @@
+                @@- end @@
+            @@- else -@@
+                @@ $g.Template "table_item/default.tmpl" $var @@
+            @@- end @@
+        @@- end @@
+    @@- end @@
+@@- end @@

@@ -1,0 +1,19 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $disabled := attrs $f.Attrs "disabled" -@@
+@@- $disabledValue := "" -@@
+@@- if $disabled -@@
+    @@- $disabledValue = $disabled.Value -@@
+@@- end -@@
+@@- $label := attrs $f.Attrs "label" -@@
+@@- $labelValue := $f.Comment -@@
+@@- if $label -@@
+    @@- $labelValue = $label.Value -@@
+@@- end -@@
+<el-form-item label="@@ $labelValue @@" prop="@@ $f.Name @@">
+@@- if $f.RelNone -@@
+    <el-input v-model="formData.@@ $f.Name @@" clearable @@- if $disabledValue @@ disabled @@- end @@ placeholder="@@ $f.Comment @@" />
+@@- else -@@
+    <el-input v-model="formData.@@ $f.Name @@.name" clearable @@- if $disabledValue @@ disabled @@- end @@ placeholder="@@ $f.Comment @@" />
+@@- end -@@
+</el-form-item>

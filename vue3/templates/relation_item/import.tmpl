@@ -1,0 +1,26 @@
+@@- $table := . -@@
+@@- if $table.HasRelations -@@
+@@- $fieldDict := dict -@@
+@@- range $table.Fields @@
+@@- $f := . -@@
+@@- if not $f.RelNone @@
+
+@@- $disabled := attrs $f.Attrs "disabled" -@@
+@@- $disabledValue := false -@@
+@@- if $disabled -@@
+    @@- $disabledValue = $disabled.Value -@@
+@@- end -@@
+
+@@- if not $disabledValue @@
+@@- if not (hasKey $fieldDict $f.Rel.RefTable.Name) -@@
+@@- $_ := set $fieldDict $f.Rel.RefTable.Name "exists" @@
+import {
+    @@ $f.Rel.RefTable.Name | camel @@All,
+} from '@/api/@@ $f.Rel.RefTable.Name @@'
+@@- end -@@
+@@- end -@@
+@@- end -@@
+@@- end @@
+
+import { useDictOptions } from '@/hooks/useDictOptions'
+@@- end @@

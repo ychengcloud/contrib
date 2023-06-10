@@ -1,0 +1,26 @@
+@@- $content := "" -@@
+@@- $table := . -@@
+@@- if $table.HasRelations -@@
+@@- $params := "" -@@
+@@- $values := "" -@@
+@@- $has := false -@@
+@@- range $table.Fields @@
+    @@- $f := . -@@
+    @@- $viewType := attrs $f.Attrs "view_type" -@@
+    @@- if $viewType -@@
+        @@- if not $f.RelNone @@
+            @@- $has = true -@@
+            @@- $params = (printf "%s%s: any[],\n" $params $f.Rel.RefTable.Name) -@@
+            @@- $values = (printf "%s%s: { api : %sAll },\n" $values  $f.Rel.RefTable.Name ($f.Rel.RefTable.Name|camel)) -@@
+        @@- end -@@
+    @@- end -@@
+@@- end -@@
+@@- if $has -@@
+const { optionsData } = useDictOptions<{
+    @@- $params -@@
+}>({
+    @@- $values -@@
+})
+import { arrayToTree } from '@/utils/util'
+@@- end -@@
+@@- end -@@

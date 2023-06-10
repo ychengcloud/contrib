@@ -1,0 +1,14 @@
+@@- $validateMsg := "请选择" -@@
+@@- $viewType := attrs .Attrs "view_type" -@@
+@@- if $viewType -@@
+@@- if eq $viewType.Value "input" "textarea" "editor" -@@
+    @@- $validateMsg = "请输入" -@@
+@@- end -@@
+@@- end -@@
+@@- if not .PrimaryKey -@@
+@@ .Name @@: [{
+    required: true,
+    message: '@@ $validateMsg @@',
+    trigger: ['blur']
+}],
+@@- end -@@

@@ -1,0 +1,213 @@
+@@- $g := .Generator -@@
+@@- $treeId := attrs .Attrs "tree_id" -@@
+@@- $treeIdValue := "id" -@@
+@@- if $treeId -@@
+    @@- $treeIdValue = $treeId.Value -@@
+@@- end -@@
+
+@@- $treePid := attrs .Attrs "tree_pid" -@@
+@@- $treePidValue := "pid" -@@
+@@- if $treePid -@@
+    @@- $treePidValue = $treePid.Value -@@
+@@- end -@@
+
+@@- $filterable := attrs .Attrs "filterable" -@@
+@@- $filterableValue := true -@@
+@@- if $filterable -@@
+    @@- $filterableValue = $filterable.Value -@@
+@@- end -@@
+
+<template>
+    <div>
+    @@- if $filterableValue -@@
+        <el-card class="!border-none mb-4" shadow="never">
+            <el-form
+                ref="formRef"
+                class="mb-[-16px]"
+                :model="queryParams"
+                inline
+            >
+
+                @@ $g.Template "view/search.tmpl" . @@
+
+                <el-form-item>
+                    <el-button type="primary" @click="getLists">查询</el-button>
+                    <el-button @click="resetParams">重置</el-button>
+                </el-form-item>
+            </el-form>
+        </el-card>
+    @@- end -@@
+        <el-card class="!border-none" shadow="never">
+            <div>
+                <el-button v-perms="['@@ .Name @@:create']" type="primary" @click="handleAdd()">
+                    <template #icon>
+                        <icon name="el-icon-Plus" />
+                    </template>
+                    新增
+                </el-button>
+                <el-button @click="handleExpand"> 展开/折叠 </el-button>
+            </div>
+            <div class="mt-4">
+                <el-table
+                    v-loading="loading"
+                    ref="tableRef"
+                    class="mt-4"
+                    size="large"
+                    :data="lists"
+                    row-key="@@- $treeIdValue -@@"
+                    :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
+                >
+                
+                    @@ $g.Template "view/list.tmpl" . @@
+
+                    <el-table-column label="操作" width="160" fixed="right">
+                        <template #default="{ row }">
+                            <el-button
+                                v-perms="['@@ .Name @@:detail']"
+                                type="primary"
+                                link
+                                @click="handleDetail(row)"
+                            >
+                                查看
+                            </el-button>
+                            <el-button
+                                v-perms="['@@ .Name @@:create']"
+                                type="primary"
+                                link
+                                @click="handleAdd(row.@@- $treeIdValue -@@)"
+                            >
+                                新增
+                            </el-button>
+                             <el-button
+                                v-perms="['@@ .Name @@:edit']"
+                                type="primary"
+                                link
+                                @click="handleEdit(row)"
+                            >
+                                编辑
+                            </el-button>
+                            <el-button
+                                v-perms="['@@ .Name @@:delete']"
+                                type="danger"
+                                link
+                                @click="handleDelete(row.@@ .ID.Name @@)"
+                            >
+                                删除
+                            </el-button>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
+        </el-card>
+        <edit-popup v-if="showEdit" ref="editRef" :dict-data="dictData" @success="getLists" @close="showEdit = false" />
+        <detail-popup v-if="showDetail" ref="detailRef" :dict-data="dictData" @success="getLists" @close="showDetail = false" />
+        </div>
+</template>
+
+<script lang="ts" setup name="@@ .Name @@Lists">
+import { timeFormat } from '@/utils/util'
+import { useDictData } from '@/hooks/useDictOptions'
+import { @@ .Name | camel @@Lists, @@ .Name | camel @@Delete } from '@/api/@@ .Name @@'
+import feedback from '@/utils/feedback'
+import EditPopup from './edit.vue'
+import DetailPopup from './detail.vue'
+import type { ElTable, FormInstance } from 'element-plus'
+
+const tableRef = shallowRef<InstanceType<typeof ElTable>>()
+const formRef = shallowRef<FormInstance>()
+const editRef = shallowRef<InstanceType<typeof EditPopup>>()
+const detailRef = shallowRef<InstanceType<typeof DetailPopup>>()
+let isExpand = false
+
+// 是否显示编辑框
+const showEdit = ref(false)
+// 是否显示详情框
+const showDetail = ref(false)
+const loading = ref(false)
+const lists = ref<any[]>([])
+
+// 查询条件
+const queryParams = reactive({
+    @@ $g.Template "view/queryParams.tmpl" . @@
+})
+
+const resetParams = () => {
+    formRef.value?.resetFields()
+    getLists()
+}
+
+const getLists = async () => {
+    loading.value = true
+    try {
+        const data = await @@ .Name | camel @@Lists(queryParams)
+        lists.value = data.lists
+        loading.value = false
+    } catch (error) {
+        loading.value = false
+    }
+}
+
+// 选中数据
+const selectData = ref<any[]>([])
+
+// 表格选择后回调事件
+const handleSelectionChange = (val: any[]) => {
+    selectData.value = val.map(({ 
+        @@ .ID.Name @@
+}) =>   @@ .ID.Name @@ )}
+
+@@ $g.Template "other_item/dictData.tmpl" . @@
+
+// 添加
+const handleAdd = async (@@- $treeIdValue -@@?: number) => {
+    showEdit.value = true
+    await nextTick()
+    if (@@- $treeIdValue -@@) {
+        editRef.value?.setFormData({
+            @@- $treePidValue -@@: @@- $treeIdValue -@@
+        })
+    }
+    editRef.value?.open('add')
+}
+
+// 查看
+const handleDetail = async (data: any) => {
+    showDetail.value = true
+    await nextTick()
+    detailRef.value?.open()
+    detailRef.value?.setFormData(data)
+}
+
+// 编辑
+const handleEdit = async (data: any) => {
+    showEdit.value = true
+    await nextTick()
+    editRef.value?.open('edit')
+    editRef.value?.setFormData(data)
+}
+
+// 删除
+const handleDelete = async (@@ .ID.Name @@: number | any[]) => {
+    await feedback.confirm('确定要删除？')
+    await @@ .Name | camel @@Delete({ @@ .ID.Name @@ })
+    getLists()
+}
+
+const handleExpand = () => {
+    isExpand = !isExpand
+    toggleExpand(lists.value, isExpand)
+}
+
+const toggleExpand = (children: any[], unfold = true) => {
+    for (const key in children) {
+        tableRef.value?.toggleRowExpansion(children[key], unfold)
+        if (children[key].children) {
+            toggleExpand(children[key].children!, unfold)
+        }
+    }
+}
+
+
+getLists()
+</script>
+

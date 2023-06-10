@@ -1,0 +1,10 @@
+@@- $viewType := attrs .Attrs "view_type" -@@
+@@- if .PrimaryKey -@@
+@@- else -@@
+    @@- if $viewType -@@
+    @@- if or (eq $viewType.Value "datetime") (eq .Type.Kind "int") -@@
+        //@ts-ignore
+        formData.@@- .Name -@@ = timeFormat(formData.@@- .Name -@@, 'yyyy-mm-dd hh:MM:ss')
+    @@- end -@@
+    @@- end -@@
+@@- end -@@

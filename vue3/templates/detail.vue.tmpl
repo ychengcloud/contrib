@@ -1,0 +1,139 @@
+@@- $g := .Generator -@@
+@@- $notInsert := ($g.Cfg.Attrs.notinsert) -@@
+@@- $notUpdate := ($g.Cfg.Attrs.notupdate) -@@
+<template>
+    <div class="edit-popup">
+        <popup
+            ref="detailPopupRef"
+            :title="popupTitle"
+            :async="true"
+            width="550px"
+            @confirm="handleClose"
+            @close="handleClose"
+        >
+            <el-descriptions
+                direction="vertical"
+                border
+            >
+            @@- range .SortedFields @@
+                @@- $f := . -@@
+                @@- $show := attrs .Attrs "show" -@@
+                @@- $viewType := attrs .Attrs "view_type" -@@
+                @@- if not (has $f.Name $notInsert) -@@
+                @@- if not (has $f.Name $notUpdate) -@@
+                    @@- if and (not $f.PrimaryKey) (not $f.ForeignKey) -@@
+                    @@- if and ($show) (not $show.Value) @@
+                    @@- else @@
+                        @@- $label := attrs $f.Attrs "label" -@@
+                        @@- $labelValue := $f.Comment -@@
+                        @@- if $label -@@
+                            @@- $labelValue = $label.Value -@@
+                        @@- end -@@
+                        @@- if $f.RelNone @@
+                            @@- $dictType := (attrs $f.Attrs "dict_type") -@@
+                            @@- $viewType := attrs $f.Attrs "view_type" -@@
+                            @@- if $dictType @@
+                                @@- if and $viewType (eq $viewType.Value "checkbox") @@
+                                    <el-descriptions-item label="@@- $labelValue -@@">{{ formData.@@ $f.Name @@ }}</el-descriptions-item>
+                                @@- else @@
+                                    <el-descriptions-item label="@@- $labelValue -@@">{{ dictData.@@ $dictType.Value @@?.find((item) => item.value === formData.@@ $f.Name @@)?.name }}</el-descriptions-item>
+                                @@- end -@@
+                            @@ else @@
+                                @@- if and $viewType (eq $viewType.Value "imageSelect") @@
+                                        <el-descriptions-item label="@@- $labelValue -@@">
+                                            <el-image style="width:50px;height:50px;" :src="formData.@@ $f.Name @@" />
+                                        </el-descriptions-item>
+                                @@- else @@
+                                    <el-descriptions-item label="@@- $labelValue -@@">{{ formData.@@ $f.Name @@ }}</el-descriptions-item>
+                                @@- end -@@
+
+
+                            @@- end -@@
+                        @@ else @@
+                            <el-descriptions-item label="@@- $labelValue -@@">{{ formData.@@ $f.Name @@.name }}</el-descriptions-item>
+                        @@ end -@@
+                        @@- end @@
+                    @@- end @@
+                @@- end @@
+                @@- end @@
+            @@- end @@
+            </el-descriptions>
+        </popup>
+    </div>
+</template>
+
+<script lang="ts" setup name="@@ .Name @@Edit">
+import Popup from '@/components/popup/index.vue'
+@@ $tree := (attrs .Attrs "showtype") -@@
+import {
+    @@ .Name | camel @@Detail,
+} from '@/api/@@ .Name @@'
+
+import type { PropType } from 'vue'
+defineProps({
+    dictData: {
+        type: Object as PropType<Record<string, any[]>>,
+        default: () => ({})
+    }
+})
+const emit = defineEmits(['success', 'close'])
+const detailPopupRef = shallowRef<InstanceType<typeof Popup>>()
+
+@@- $g.Template "other_item/editTreeConst.tmpl" . @@
+
+// 弹窗标题
+const popupTitle = computed(() => {
+    return '@@ .Comment @@详情'
+})
+
+// 表单数据
+const formData = reactive({
+    @@ .ID.Name @@: '',
+@@- $notInsert := ($g.Cfg.Attrs.notinsert) -@@
+@@- $notUpdate := ($g.Cfg.Attrs.notupdate) -@@
+@@- range .SortedFields @@
+    @@- if not (has .Name $notInsert) -@@
+    @@- if not (has .Name $notUpdate) -@@
+        @@- $g.Template "other_item/formData.tmpl" . @@
+    @@ end -@@
+    @@ end -@@
+@@ end -@@
+})
+
+// 获取详情
+const setFormData = async (data: Record<any, any>) => {
+    for (const key in formData) {
+        if (data[key] != null && data[key] != undefined) {
+            //@ts-ignore
+            formData[key] = data[key]
+        }
+    }
+@@- range .Fields @@
+    @@- $g.Template "other_item/formDate.tmpl" . -@@
+@@- end @@
+}
+
+const getDetail = async (row: Record<string, any>) => {
+    const data = await @@ .Name | camel @@Detail({
+        @@ .ID.Name @@: row.@@ .ID.Name @@
+    })
+    setFormData(data)
+}
+
+
+//打开弹窗
+const open = () => {
+    detailPopupRef.value?.open()
+}
+
+// 关闭回调
+const handleClose = () => {
+    emit('close')
+}
+
+defineExpose({
+    open,
+    setFormData,
+    getDetail
+})
+</script>

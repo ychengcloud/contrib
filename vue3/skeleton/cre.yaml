@@ -1,0 +1,25 @@
+project: careworker
+dialect: "mysql"
+dsn: "root:@tcp(127.0.0.1:3306)/careworker?charset=utf8mb4"
+root: "../../../ychengcloud/project/cre/contrib/vue3/templates"
+genRoot: "./"
+
+delim: 
+  left: "@@"
+  right: "@@"
+
+attrs:
+    
+tables:
+  - name: careworker
+    fields:
+      - name: id
+        attrs:
+          show: "true"
+
+  - name: "hospital_bed"
+    fields:
+      - name: department
+        relation: 
+          type: "BelongsTo"
+          ref_table: hospital_department

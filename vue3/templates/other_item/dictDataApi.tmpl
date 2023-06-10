@@ -1,0 +1,8 @@
+@@- $g := .Generator -@@
+@@- $f := . -@@
+dictDataLists({
+    type_value: '@@ $g.Template "other_item/dictTypeValue.tmpl" $f @@',
+    page_type: 0
+}).then((res: any) => {
+    dictData.@@ $g.Template "other_item/dictTypeValue.tmpl" $f @@ = res.lists
+})

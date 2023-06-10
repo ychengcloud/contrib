@@ -1,0 +1,7 @@
+@@- $g := .Generator -@@
+@@- $viewType := attrs .Attrs "view_type" -@@
+@@- if and $viewType (eq $viewType.Value "tree") -@@
+    @@ $g.Template "view/indexTree.tmpl" . @@
+@@- else -@@
+    @@ $g.Template "view/index.tmpl" . @@
+@@- end -@@

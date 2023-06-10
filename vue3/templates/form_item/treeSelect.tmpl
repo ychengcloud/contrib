@@ -1,0 +1,39 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $treeId := attrs $f.Attrs "tree_id" -@@
+@@- $treeIdValue := "id" -@@
+@@- if $treeId -@@
+    @@- $treeIdValue = $treeId.Value -@@
+@@- end -@@
+@@- $treeName := attrs $f.Attrs "tree_id" -@@
+@@- $treeNameValue := "name" -@@
+@@- if $treeName -@@
+    @@- $treeNameValue = $treeName.Value -@@
+@@- end -@@
+<el-form-item label="@@ $f.Comment @@" prop="@@ $f.Name @@">
+@@- if $f.RelNone -@@
+    <el-tree-select
+        class="flex-1"
+        v-model="formData.@@ $f.Name @@"
+        :data="treeList"
+        clearable
+        node-key="@@- $treeIdValue -@@"
+        :props="{ label: '@@ $treeNameValue @@', value: '@@ $treeIdValue @@', children: 'children' }"
+        :default-expand-all="true"
+        placeholder="请选择@@ $f.Comment @@"
+        check-strictly
+    />
+@@- else @@
+    <el-tree-select
+        class="flex-1"
+        v-model="formData.@@ $f.Rel.Field.Name @@"
+        :data="arrayToTree(optionsData.@@ $f.Rel.RefTable.Name @@)"
+        clearable
+        node-key="@@- $treeIdValue -@@"
+        :props="{ label: '@@ $treeNameValue @@', value: '@@ $treeIdValue @@', children: 'children' }"
+        :default-expand-all="true"
+        placeholder="请选择@@ $f.Comment @@"
+        check-strictly
+    />
+@@- end -@@
+</el-form-item>

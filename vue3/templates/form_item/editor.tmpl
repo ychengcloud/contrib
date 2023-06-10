@@ -1,0 +1,10 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $label := attrs $f.Attrs "label" -@@
+@@- $labelValue := $f.Comment -@@
+@@- if $label -@@
+    @@- $labelValue = $label.Value -@@
+@@- end -@@
+<el-form-item label="@@ $labelValue @@" prop="@@ $f.Name @@">
+    <editor class="flex-1" v-model="formData.@@ $f.Name @@" :height="500" />
+</el-form-item>

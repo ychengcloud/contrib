@@ -11,7 +11,7 @@ import (
 	status "google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
-	pb "{{ $g.Cfg.Attrs.protoPkg }}/gen/go/{{ .Project }}/v1"
+	pb "{{ $g.Cfg.Attrs.protopkg }}"
 	"{{ .Package }}/domain"
 	"{{ .Package }}/repository"
 )

@@ -1,0 +1,144 @@
+@@- $g := .Generator -@@
+<template>
+    <div class="edit-popup">
+        <popup
+            ref="popupRef"
+            :title="popupTitle"
+            :async="true"
+            width="550px"
+            @confirm="handleSubmit"
+            @close="handleClose"
+        >
+            <el-form ref="formRef" :model="formData" label-width="100px" :rules="formRules">
+            @@- $g.Template "other_item/formView.tmpl" . @@
+            </el-form>
+        </popup>
+    </div>
+</template>
+
+<script lang="ts" setup name="@@ .Name @@Edit">
+import type { FormInstance } from 'element-plus'
+import Popup from '@/components/popup/index.vue'
+@@ $viewType := (attrs .Attrs "view_type") -@@
+import {
+    @@- if and $viewType (eq $viewType.Value "tree")  @@
+        @@ .Name | camel @@Lists,
+    @@- end @@
+    @@ .Name | camel @@Add, @@ .Name | camel @@Edit, @@ .Name | camel @@Detail,
+} from '@/api/@@ .Name @@'
+
+@@- $g.Template "relation_item/import.tmpl" . @@
+
+import { timeFormat } from '@/utils/util'
+import type { PropType } from 'vue'
+defineProps({
+    dictData: {
+        type: Object as PropType<Record<string, any[]>>,
+        default: () => ({})
+    }
+})
+const emit = defineEmits(['success', 'close'])
+const formRef = shallowRef<FormInstance>()
+const popupRef = shallowRef<InstanceType<typeof Popup>>()
+const mode = ref('add')
+
+@@- $g.Template "other_item/editTreeConst.tmpl" . @@
+
+// 弹窗标题
+const popupTitle = computed(() => {
+    return mode.value == 'edit' ? '编辑@@ .Comment @@' : '新增@@ .Comment @@'
+})
+
+// 表单数据
+const formData = reactive({
+    @@ .ID.Name @@: '',
+@@- $notInsert := ($g.Cfg.Attrs.notinsert) -@@
+@@- $notUpdate := ($g.Cfg.Attrs.notupdate) -@@
+@@- range .SortedFields @@
+    @@- if not (has .Name $notInsert) -@@
+    @@- if not (has .Name $notUpdate) -@@
+        @@- $g.Template "other_item/formData.tmpl" . @@
+    @@ end -@@
+    @@ end -@@
+@@ end -@@
+})
+
+
+// 表单验证
+const formRules = reactive<any>({
+@@- $notInsert := ($g.Cfg.Attrs.notinsert) -@@
+@@- $notUpdate := ($g.Cfg.Attrs.notupdate) -@@
+@@- $required := (attrs .Attrs "required") -@@
+@@- $requiredValue := list -@@
+@@- if $required @@
+    @@- $requiredValue = $required.Value -@@
+@@- end @@
+@@- range .Fields @@
+    @@- if not (has .Name $notInsert) -@@
+    @@- if not (has .Name $notUpdate) -@@
+    @@- if (has .Name $requiredValue) -@@
+        @@ $g.Template "other_item/formValidate.tmpl" . @@
+    @@ end -@@
+    @@ end -@@
+    @@ end -@@
+@@- end @@
+})
+
+@@ $g.Template "other_item/optionsData.tmpl" . @@
+
+// 获取详情
+const setFormData = async (data: Record<any, any>) => {
+    for (const key in formData) {
+        if (data[key] != null && data[key] != undefined) {
+            //@ts-ignore
+            formData[key] = data[key]
+        }
+    }
+@@- range .Fields @@
+    @@- $g.Template "other_item/checkBoxSplit.tmpl" . -@@
+@@- end @@
+@@- range .Fields @@
+    @@- $g.Template "other_item/formDate.tmpl" . -@@
+@@- end @@
+}
+
+const getDetail = async (row: Record<string, any>) => {
+    const data = await @@ .Name | camel @@Detail({
+        @@ .ID.Name @@: row.@@ .ID.Name @@
+    })
+    setFormData(data)
+}
+
+
+// 提交按钮
+const handleSubmit = async () => {
+    await formRef.value?.validate()
+    const data = { ...formData, @@ range .Fields -@@
+        @@- $g.Template "other_item/checkBoxJoin.tmpl" . -@@
+    @@- end @@ }
+    mode.value == 'edit' 
+        ? await @@ .Name | camel @@Edit(data) 
+        : await @@ .Name | camel @@Add(data)
+    popupRef.value?.close()
+    emit('success')
+}
+
+//打开弹窗
+const open = (type = 'add') => {
+    mode.value = type
+    popupRef.value?.open()
+}
+
+// 关闭回调
+const handleClose = () => {
+    emit('close')
+}
+
+@@ $g.Template "other_item/editTreeLists.tmpl" . @@
+
+defineExpose({
+    open,
+    setFormData,
+    getDetail
+})
+</script>

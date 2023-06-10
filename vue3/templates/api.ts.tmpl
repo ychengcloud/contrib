@@ -1,0 +1,31 @@
+import request from '@/utils/request'
+
+// {COMMENT}列表
+export function @@ .Name | camel @@Lists(params: any) {
+    return request.get({ url: '/@@ .Name @@/lists', params })
+}
+
+// {COMMENT}全部
+export function @@ .Name | camel @@All(params: any) {
+    return request.get({ url: '/@@ .Name @@/all', params })
+}
+
+// 添加{COMMENT}
+export function @@ .Name | camel @@Add(params: any) {
+    return request.post({ url: '/@@ .Name @@/add', params })
+}
+
+// 编辑{COMMENT}
+export function @@ .Name | camel @@Edit(params: any) {
+    return request.post({ url: '/@@ .Name @@/edit', params })
+}
+
+// 删除{COMMENT}
+export function @@ .Name | camel @@Delete(params: any) {
+    return request.post({ url: '/@@ .Name @@/delete', params })
+}
+
+// {COMMENT}详情
+export function @@ .Name | camel @@Detail(params: any) {
+    return request.get({ url: '/@@ .Name @@/detail', params })
+}

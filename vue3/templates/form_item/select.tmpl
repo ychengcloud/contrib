@@ -1,0 +1,28 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $label := attrs $f.Attrs "label" -@@
+@@- $labelValue := $f.Comment -@@
+@@- if $label -@@
+    @@- $labelValue = $label.Value -@@
+@@- end -@@
+@@- if $f.RelNone -@@
+<el-form-item label="@@ $labelValue @@" prop="@@ $f.Name @@">
+<el-select class="flex-1" v-model="formData.@@ $f.Name @@" clearable placeholder="请选择@@ $f.Comment @@">
+        <el-option 
+            v-for="(item, index) in dictData.@@- $g.Template "other_item/dictTypeValue.tmpl" $f -@@"
+            :key="index" 
+            :label="item.name"
+            :value="@@- $g.Template "other_item/itemValue.tmpl" $f -@@"
+        />
+@@- else @@
+<el-form-item label="@@ $labelValue @@" prop="@@ $f.Rel.Field.Name @@">
+<el-select class="flex-1" v-model="formData.@@ $f.Rel.Field.Name @@" clearable filterable placeholder="请选择@@ $f.Comment @@">
+        <el-option 
+            v-for="(item) in optionsData.@@ $f.Rel.RefTable.Name @@"
+            :key="item.@@- $f.Rel.RefField.Name -@@" 
+            :label="item.name"
+            :value="item.@@- $f.Rel.RefField.Name -@@"
+        />        
+@@- end -@@
+    </el-select>
+</el-form-item>

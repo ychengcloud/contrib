@@ -1,0 +1,11 @@
+@@- $f := . -@@
+@@- $viewType := attrs .Attrs "view_type" -@@
+@@- if $viewType -@@
+@@- if eq $viewType.Value "radio" "select" -@@
+    @@- $itemValue := "item.value" -@@
+    @@- if eq $f.Type.Kind "tinyint" "smallint" "mediumint" "int" "integer" "bigint" -@@
+        @@- $itemValue = "parseInt(item.value)" -@@
+    @@- end -@@
+    @@- $itemValue -@@
+@@- end -@@
+@@- end -@@

@@ -1,8 +1,10 @@
+{{ $g := .Generator }}
+
 syntax = "proto3";
 
 package {{ .Project | snake }};
 
-option go_package = "{{ .Package }}/gen/proto/go/{{ .Project | snake }}/v1;{{ .Project | snake }}";
+option go_package = "{{ $g.Cfg.Attrs.protopkg }};{{ .Project | snake }}";
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";

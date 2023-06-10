@@ -1,0 +1,21 @@
+@@- $g := .Generator -@@
+@@- range .Fields @@
+    @@- $f := . -@@
+    @@- if .Filterable @@
+        @@- $viewType := attrs $f.Attrs "view_type" -@@
+        @@- $var := (dict "g" $g "field" $f) @@
+        @@- if $viewType @@
+            @@- if (eq $viewType.Value "datetime") @@
+                @@ $g.Template "search_item/datetime.tmpl" $var @@
+            @@- end @@
+            @@- if (eq $viewType.Value "select" "radio") @@
+                @@ $g.Template "search_item/select.tmpl" $var @@
+            @@- end @@
+            @@- if not (eq $viewType.Value "select" "datetime" "radio") @@
+                @@ $g.Template "search_item/input.tmpl" $var @@
+            @@- end @@
+        @@- else -@@
+            @@ $g.Template "search_item/input.tmpl" $var @@
+        @@- end @@
+    @@- end @@
+@@- end @@

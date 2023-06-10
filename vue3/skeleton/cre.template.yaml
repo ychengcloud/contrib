@@ -1,0 +1,15 @@
+templates:
+  - path: "index.vue.tmpl"
+    genPath: "src/views"
+    format: "{{.Table}}/index.vue"
+    mode: "multi"
+
+  - path: "edit.vue.tmpl"
+    genPath: "src/views"
+    format: "{{.Table}}/edit.vue"
+    mode: "multi"
+
+  - path: "api.ts.tmpl"
+    genPath: "src/api"
+    format: "{{.Table}}/index.ts"
+    mode: "multi"

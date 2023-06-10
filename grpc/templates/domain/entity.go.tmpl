@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "{{ $g.Cfg.Attrs.protoPkg }}/gen/go/{{ .Project }}/v1"
+	pb "{{ $g.Cfg.Attrs.protopkg }}"
 )
 
 type {{ $table.Name | pascal }} struct {

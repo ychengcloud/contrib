@@ -1,0 +1,20 @@
+@@- $g := get . "g" -@@
+@@- $f := get . "field" -@@
+@@- $label := attrs $f.Attrs "label" -@@
+@@- $labelValue := $f.Comment -@@
+@@- if $label -@@
+    @@- $labelValue = $label.Value -@@
+@@- end -@@
+
+@@- if $f.RelNone -@@
+@@- $dictType := (attrs $f.Attrs "dict_type") -@@
+@@- if $dictType @@
+<el-table-column label="@@ $labelValue @@" prop="@@ $f.Name @@">
+    <template #default="{ row }">
+        <dict-value :options="dictData.@@- $g.Template "other_item/dictTypeValue.tmpl" $f -@@" :value="row.@@ $f.Name @@" />
+    </template>
+</el-table-column>
+@@- end -@@
+@@- else -@@
+<el-table-column label="@@ $labelValue @@" prop="@@ $f.Rel.RefTable.Name @@.name" show-overflow-tooltip />
+@@- end -@@

@@ -1,0 +1,24 @@
+@@- $table := . -@@
+@@ $viewType := (attrs $table.Attrs "view_type") -@@
+@@- if and $viewType (eq $viewType.Value "tree")  @@
+@@- $treeId := (attrs $table.Attrs "tree_id") -@@
+@@- $treeName := (attrs $table.Attrs "tree_name") -@@
+@@- $treeIdValue := "id" -@@
+@@- if $treeId -@@
+    @@- $treeIdValue = $treeId.Value -@@
+@@- end -@@
+
+@@- $treeNameValue := "name" -@@
+@@- if $treeName -@@
+    @@- $treeNameValue = $treeName.Value -@@
+@@- end -@@
+
+const getLists = async () => {
+   const data: any = await @@ $table.Name | camel @@Lists({})
+   const item = { @@ $treeIdValue @@: 0, @@ $treeNameValue @@: '顶级', children: [] }
+   item.children = data.lists
+   treeList.value.push(item)
+}
+
+getLists()
+@@- end -@@
