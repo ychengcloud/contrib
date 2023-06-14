@@ -10,6 +10,8 @@ install:
 		github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
 
 
+.PHONY: buf
+buf:
 # 或许需要网络代理
 	curl -sSL && \
     	"https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-$(shell uname -s)-$(shell uname -m)" && \

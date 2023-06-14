@@ -42,12 +42,12 @@
                 {{- if not $f.Remote }}
                     // Insert many to many relationship
                     if len({{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}) > 0 {
-                        values := make([][]any, 0)
+                        {{ $f.Name | camel }}Values := make([][]any, 0)
                         for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }} {
-                            values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }} })
+                            {{ $f.Name | camel }}Values = append({{ $f.Name | camel }}Values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }}, {{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }} })
                         }
                         joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-                        err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+                        err = AddManyToManyRelation(ctx, dialect, execer, joinTable, {{ $f.Name | camel }}Values)
                         if err != nil {
                             return nil, err
                         }
@@ -120,16 +120,16 @@
             {{- if $f.RelManyToMany }}
                 {{- if not $f.Remote }}
                     // Insert many to many relationship
-                    values := make([][]any, 0)
+                    {{ $f.Name | camel }}Values := make([][]any, 0)
                     for _, {{ $table.Name | camel }} := range {{ $table.Name | camel | plural }} {
                         for _, {{ $f.Rel.RefTable.Name | camel }} := range {{ $table.Name | camel }}.{{ $f.Name | pascal | plural }}  {
-                            values = append(values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }},{{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }}})
+                            {{ $f.Name | camel }}Values = append({{ $f.Name | camel }}Values, []any{ {{ $table.Name | camel }}.{{ $table.ID.Name | pascal }},{{ $f.Rel.RefTable.Name | camel }}.{{ $f.Rel.RefTable.ID.Name | pascal }}})
                         }
                     }
 
-                    if len(values) > 0 {
+                    if len({{ $f.Name | camel }}Values) > 0 {
                         joinTable := &domain.JoinTable{Name: "{{ $f.Rel.JoinTable.Name }}", Field: "{{ $f.Rel.JoinTable.JoinField.Name }}", RefField: "{{ $f.Rel.JoinTable.JoinRefField.Name }}"}
-                        err = AddManyToManyRelation(ctx, dialect, execer, joinTable, values)
+                        err = AddManyToManyRelation(ctx, dialect, execer, joinTable, {{ $f.Name | camel }}Values)
                         if err != nil {
                             return nil, err
                         }

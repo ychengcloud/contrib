@@ -19,51 +19,5 @@ genRoot: "./"
 # 其他属性，多用于扩展， eg: 设置 protobuf 包名
 attrs:
   # protobuf 包名
-  protoPkg: "<protoPkg>"
+  protopkg: "<protoPkg>"
   
-tables:
-  - name: "category"
-  - name: "post"
-    fields:
-      - name: "id"
-        filterable: true
-        operations: ["Eq", "In"]
-      - name: "category"
-        relation:
-          name: "Category"
-          type: "manyToMany"
-          ref_table: "category"
-          join_table:
-            name: "post_category"
-
-      - name: "tag"
-        relation:
-          name: "Tag"
-          type: "manyToMany"
-          ref_table: "tag"
-          join_table:
-            name: "post_tag"
-
-      - name: "comment"
-        relation:
-          name: "Comment"
-          type: "hasMany"
-          ref_table: "comment"
-
-      - name: "meta"
-        relation:
-          name: "Meta"
-          type: "hasMany"
-          ref_table: "meta"
-
-  - name: "comment"
-    relation:
-      name: "Post"
-      type: "BelongsTo"
-      ref_table: "post"
-
-  - name: "meta"
-    relation:
-      name: "Post"
-      type: "BelongsTo"
-      ref_table: "post"
